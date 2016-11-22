@@ -1,1 +1,1 @@
-#Pundun API for GO Spplications
+#Pundun API for GO Applications

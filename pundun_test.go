@@ -18,21 +18,19 @@ func TestRun1(t *testing.T) {
 
 	tableName := "ct"
 	keyDef := []string{"imsi", "ts"}
-	columnsDef := []string{"name", "age", "bin", "bool", "double"}
-	indexes := []string{}
 	options := map[string]interface{}{
-		"type":              "leveldb",
-		"datamodel":         "binary",
-		"comparator":        "descending",
-		"timeseries":        false,
-		"shards":            8,
-		"distributed":       true,
-		"replicationfactor": 1,
-		"hashexclude":       []string{"ts"},
+		"type":               "leveldb",
+		"data_model":         "array",
+		"comparator":         "descending",
+		"time_series":        false,
+		"shards":             8,
+		"distributed":        true,
+		"replication_factor": 1,
+		"hash_exclude":       []string{"ts"},
 	}
 
 	log.Println("Create Table")
-	res, err := CreateTable(session, tableName, keyDef, columnsDef, indexes, options)
+	res, err := CreateTable(session, tableName, keyDef, options)
 	log.Printf("Result: %v\n", res)
 
 	log.Println("Table Info")
@@ -61,8 +59,17 @@ func TestRun1(t *testing.T) {
 		"double": 5.5,
 	}
 
+	upOp := []UpdateOperation{UpdateOperation{
+		Field:       "age",
+		Instruction: Increment,
+		Value:       1}}
+
 	log.Println("Write")
 	res, err = Write(session, tableName, key, columns)
+	log.Printf("Result: %v\n", res)
+
+	log.Println("Update")
+	res, err = Update(session, tableName, key, upOp)
 	log.Printf("Result: %v\n", res)
 
 	log.Println("Read")
@@ -119,11 +126,9 @@ func TestRun2(t *testing.T) {
 	defer Disconnect(session)
 	tableName := "ctw"
 	keyDef := []string{"imsi", "ts"}
-	columnsDef := []string{"name", "age", "bin", "bool", "double"}
-	indexes := []string{}
 	options := map[string]interface{}{
-		"type":      "leveldbwrapped",
-		"datamodel": "binary",
+		"type":       "leveldbwrapped",
+		"data_model": "map",
 		"wrapper": Wrapper{
 			NumOfBuckets: 5,
 			TimeMargin: TimeMargin{
@@ -133,16 +138,16 @@ func TestRun2(t *testing.T) {
 				Unit:  Megabytes,
 				Value: 100},
 		},
-		"comparator":        "descending",
-		"timeseries":        false,
-		"shards":            8,
-		"distributed":       true,
-		"replicationfactor": 1,
-		"hashexclude":       []string{"ts"},
+		"comparator":         "descending",
+		"time_series":        false,
+		"shards":             8,
+		"distributed":        true,
+		"replication_factor": 1,
+		"hash_exclude":       []string{"ts"},
 	}
 
 	log.Println("Create Table")
-	res, err := CreateTable(session, tableName, keyDef, columnsDef, indexes, options)
+	res, err := CreateTable(session, tableName, keyDef, options)
 	log.Printf("Result: %v\n", res)
 	log.Println("Delete Table")
 	res, err = DeleteTable(session, tableName)
@@ -161,22 +166,20 @@ func TestRun3(t *testing.T) {
 
 	tableName := "ctt"
 	keyDef := []string{"ts"}
-	columnsDef := []string{"timestamp"}
-	indexes := []string{}
 	options := map[string]interface{}{
-		"type":              "leveldb",
-		"datamodel":         "binary",
-		"comparator":        "descending",
-		"timeseries":        false,
-		"shards":            8,
-		"distributed":       true,
-		"replicationfactor": 1,
-		"hashexclude":       []string{"ts"},
+		"type":               "leveldb",
+		"data_model":         "array",
+		"comparator":         "descending",
+		"time_series":        false,
+		"shards":             8,
+		"distributed":        true,
+		"replication_factor": 1,
+		"hash_exclude":       []string{"ts"},
 	}
 
-	res, err := CreateTable(session, tableName, keyDef, columnsDef, indexes, options)
+	res, err := CreateTable(session, tableName, keyDef, options)
 
-	max := 65535 * 2
+	max := 65535
 
 	i := 0
 	reduce := make(chan bool, i)

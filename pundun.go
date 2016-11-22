@@ -1,27 +1,15 @@
 package pundun
 
 import (
-	"crypto/tls"
-	"encoding/binary"
 	"errors"
 	"github.com/erdemaksu/apollo"
-	"github.com/erdemaksu/scram"
 	"github.com/golang/protobuf/proto"
 	"log"
-	"net"
-	"time"
 )
 
 const (
 	timeout = 60
 )
-
-type Session struct {
-	conn    net.Conn
-	tidReq  chan string
-	tidResp chan int32
-	timeout time.Duration
-}
 
 type Wrapper struct {
 	NumOfBuckets int32
@@ -54,9 +42,37 @@ const (
 	Error  = 1
 )
 
-type Response struct {
-	Type  int
-	Value interface{}
+const (
+	OK = 0
+)
+
+type KVP struct {
+	Key     map[string]interface{}
+	Columns map[string]interface{}
+}
+
+type KVL struct {
+	List         []KVP
+	Continuation map[string]interface{}
+}
+
+type Iterator struct {
+	Kvp KVP
+	It  []byte
+}
+
+const (
+	Increment = 0
+	Overwrite = 1
+)
+
+type UpdateOperation struct {
+	Field        string
+	Instruction  int
+	Value        interface{}
+	DefaultValue interface{}
+	Treshold     int
+	SetValue     int
 }
 
 func tidServe(tid, max int32, req chan string, resp chan int32) {
@@ -72,6 +88,7 @@ func tidServe(tid, max int32, req chan string, resp chan int32) {
 					tid++
 				}
 			case "stop":
+				log.Printf("Stopping id server..\n")
 				close(req)
 				close(resp)
 				break
@@ -80,45 +97,12 @@ func tidServe(tid, max int32, req chan string, resp chan int32) {
 	}
 }
 
-func Connect(host, user, pass string) (Session, error) {
-	conf := &tls.Config{
-		InsecureSkipVerify: true,
-	}
-
-	conn, err := tls.Dial("tcp", host, conf)
-	if err != nil {
-		log.Println(err)
-		return Session{}, err
-	}
-
-	authErr := scram.Authenticate(conn, user, pass)
-	if authErr != nil {
-		log.Println(authErr)
-		conn.Close()
-		return Session{}, authErr
-	}
-	log.Println("Connected to pundun node.")
-
-	tidReq := make(chan string)
-	tidResp := make(chan int32)
-	go tidServe(0, 65535, tidReq, tidResp)
-	return Session{conn, tidReq, tidResp, timeout}, err
-}
-
-func Disconnect(s Session) {
-	s.tidReq <- "stop"
-	conn := s.conn
-	conn.Close()
-}
-
-func CreateTable(s Session, tableName string, key, columns, indexes []string, options map[string]interface{}) (Response, error) {
+func CreateTable(s Session, tableName string, key []string, options map[string]interface{}) (interface{}, error) {
 	tableOptions := fixOptions(options)
 
 	createTable := &apollo.CreateTable{
 		TableName:    *proto.String(tableName),
 		Keys:         key,
-		Columns:      columns,
-		Indexes:      indexes,
 		TableOptions: tableOptions,
 	}
 
@@ -134,7 +118,7 @@ func CreateTable(s Session, tableName string, key, columns, indexes []string, op
 	return res, err
 }
 
-func DeleteTable(s Session, tableName string) (Response, error) {
+func DeleteTable(s Session, tableName string) (interface{}, error) {
 	deleteTable := &apollo.DeleteTable{
 		TableName: *proto.String(tableName),
 	}
@@ -150,7 +134,7 @@ func DeleteTable(s Session, tableName string) (Response, error) {
 	return res, err
 }
 
-func OpenTable(s Session, tableName string) (Response, error) {
+func OpenTable(s Session, tableName string) (interface{}, error) {
 	openTable := &apollo.OpenTable{
 		TableName: *proto.String(tableName),
 	}
@@ -167,7 +151,7 @@ func OpenTable(s Session, tableName string) (Response, error) {
 	return res, err
 }
 
-func CloseTable(s Session, tableName string) (Response, error) {
+func CloseTable(s Session, tableName string) (interface{}, error) {
 	closeTable := &apollo.CloseTable{
 		TableName: *proto.String(tableName),
 	}
@@ -184,7 +168,7 @@ func CloseTable(s Session, tableName string) (Response, error) {
 	return res, err
 }
 
-func TableInfo(s Session, tableName string, attrs []string) (Response, error) {
+func TableInfo(s Session, tableName string, attrs []string) (interface{}, error) {
 	attributes := fixAttributes(attrs)
 	tableInfo := &apollo.TableInfo{
 		TableName:  *proto.String(tableName),
@@ -203,7 +187,7 @@ func TableInfo(s Session, tableName string, attrs []string) (Response, error) {
 	return res, err
 }
 
-func Read(s Session, tableName string, key map[string]interface{}) (Response, error) {
+func Read(s Session, tableName string, key map[string]interface{}) (interface{}, error) {
 	keyFields := fixFields(key)
 	read := &apollo.Read{
 		TableName: *proto.String(tableName),
@@ -222,7 +206,7 @@ func Read(s Session, tableName string, key map[string]interface{}) (Response, er
 	return res, err
 }
 
-func Write(s Session, tableName string, key, columns map[string]interface{}) (Response, error) {
+func Write(s Session, tableName string, key, columns map[string]interface{}) (interface{}, error) {
 	keyFields := fixFields(key)
 	columnFields := fixFields(columns)
 	write := &apollo.Write{
@@ -243,7 +227,28 @@ func Write(s Session, tableName string, key, columns map[string]interface{}) (Re
 	return res, err
 }
 
-func Delete(s Session, tableName string, key map[string]interface{}) (Response, error) {
+func Update(s Session, tableName string, key map[string]interface{}, upOps []UpdateOperation) (interface{}, error) {
+	keyFields := fixFields(key)
+	updateOperations := fixUpdateOperations(upOps)
+	update := &apollo.Update{
+		TableName:       *proto.String(tableName),
+		Key:             keyFields,
+		UpdateOperation: updateOperations,
+	}
+
+	procedure := &apollo.ApolloPdu_Update{
+		Update: update,
+	}
+
+	pdu := &apollo.ApolloPdu{
+		Procedure: procedure,
+	}
+
+	res, err := run_transaction(s, pdu)
+	return res, err
+}
+
+func Delete(s Session, tableName string, key map[string]interface{}) (interface{}, error) {
 	keyFields := fixFields(key)
 	delete := &apollo.Delete{
 		TableName: *proto.String(tableName),
@@ -262,7 +267,7 @@ func Delete(s Session, tableName string, key map[string]interface{}) (Response, 
 	return res, err
 }
 
-func ReadRange(s Session, tableName string, skey, ekey map[string]interface{}, limit int) (Response, error) {
+func ReadRange(s Session, tableName string, skey, ekey map[string]interface{}, limit int) (interface{}, error) {
 	skeyFields := fixFields(skey)
 	ekeyFields := fixFields(ekey)
 	readRange := &apollo.ReadRange{
@@ -284,7 +289,7 @@ func ReadRange(s Session, tableName string, skey, ekey map[string]interface{}, l
 	return res, err
 }
 
-func ReadRangeN(s Session, tableName string, skey map[string]interface{}, n int) (Response, error) {
+func ReadRangeN(s Session, tableName string, skey map[string]interface{}, n int) (interface{}, error) {
 	skeyFields := fixFields(skey)
 	readRangeN := &apollo.ReadRangeN{
 		TableName: *proto.String(tableName),
@@ -304,7 +309,7 @@ func ReadRangeN(s Session, tableName string, skey map[string]interface{}, n int)
 	return res, err
 }
 
-func First(s Session, tableName string) (Response, error) {
+func First(s Session, tableName string) (interface{}, error) {
 	first := &apollo.First{
 		TableName: *proto.String(tableName),
 	}
@@ -321,7 +326,7 @@ func First(s Session, tableName string) (Response, error) {
 	return res, err
 }
 
-func Last(s Session, tableName string) (Response, error) {
+func Last(s Session, tableName string) (interface{}, error) {
 	last := &apollo.Last{
 		TableName: *proto.String(tableName),
 	}
@@ -338,7 +343,7 @@ func Last(s Session, tableName string) (Response, error) {
 	return res, err
 }
 
-func Seek(s Session, tableName string, key map[string]interface{}) (Response, error) {
+func Seek(s Session, tableName string, key map[string]interface{}) (interface{}, error) {
 	keyFields := fixFields(key)
 	seek := &apollo.Seek{
 		TableName: *proto.String(tableName),
@@ -357,7 +362,7 @@ func Seek(s Session, tableName string, key map[string]interface{}) (Response, er
 	return res, err
 }
 
-func Next(s Session, it []byte) (Response, error) {
+func Next(s Session, it []byte) (interface{}, error) {
 	next := &apollo.Next{
 		It: it,
 	}
@@ -374,7 +379,7 @@ func Next(s Session, it []byte) (Response, error) {
 	return res, err
 }
 
-func Prev(s Session, it []byte) (Response, error) {
+func Prev(s Session, it []byte) (interface{}, error) {
 	prev := &apollo.Prev{
 		It: it,
 	}
@@ -391,22 +396,21 @@ func Prev(s Session, it []byte) (Response, error) {
 	return res, err
 }
 
-func run_transaction(s Session, pdu *apollo.ApolloPdu) (Response, error) {
-	s.tidReq <- "tid"
-	tid := <-s.tidResp
+func run_transaction(s Session, pdu *apollo.ApolloPdu) (interface{}, error) {
+	tid := GetTid(s)
 	pdu = make_pdu(pdu, tid)
-	data, err := proto.Marshal(pdu)
+	pduBin, err := proto.Marshal(pdu)
 	if err != nil {
 		log.Println("marshaling error: ", err)
-		var res = Response{}
-		return res, err
+		return nil, err
 	}
 
-	_, err = send(s, data)
+	recv, err := send(s, pduBin)
+
 	if err != nil {
 		log.Println("error: ", err)
 	}
-	res, err := waitForResponse(s)
+	res, err := waitForResponse(recv)
 	return res, err
 }
 
@@ -420,88 +424,63 @@ func make_pdu(pdu *apollo.ApolloPdu, tid int32) *apollo.ApolloPdu {
 	return pdu
 }
 
-func send(s Session, data []byte) (int, error) {
-	len := uint32(len(data))
-	wire := make([]byte, len+4)
-	binary.BigEndian.PutUint32(wire, len)
-	copy(wire[4:], data[:])
-	return s.conn.Write(wire)
+func send(s Session, data []byte) ([]byte, error) {
+	response := SendMsg(s, data)
+	return response, nil
 }
 
-func waitForResponse(s Session) (Response, error) {
-	t := time.Now().Add(s.timeout * time.Second)
-	s.conn.SetDeadline(t)
-
-	recv := make([]byte, 4)
-	n, err := s.conn.Read(recv)
-
-	if n != 4 || err != nil {
-		log.Printf("n: %v, error: %v", n, err)
-		return Response{}, err
-	}
-
-	len := binary.BigEndian.Uint32(recv)
-	recv = make([]byte, len)
-
-	n, err = s.conn.Read(recv)
-	if err != nil {
-		log.Println("error: ", err)
-		return Response{}, err
-	}
-
+func waitForResponse(recv []byte) (interface{}, error) {
 	recvPdu := &apollo.ApolloPdu{}
-	err = proto.Unmarshal(recv, recvPdu)
+	err := proto.Unmarshal(recv, recvPdu)
 
 	if err != nil {
 		log.Println("unmarshaling error: ", err)
-		return Response{}, err
+		return nil, err
 	}
-
-	log.Println(recvPdu)
 
 	e := recvPdu.GetError()
 	r := recvPdu.GetResponse()
 	if r != nil {
-		rmap := getResultMap(r)
-		return Response{Result, rmap}, err
+		result := getResult(r)
+		return result, err
 	}
 	if e != nil {
-		emap := getErrorMap(e)
-		return Response{Error, emap}, err
+		pErr := getError(e)
+		return pErr, err
 	}
-	return Response{}, errors.New("invalid response")
+	return nil, errors.New("invalid response")
 }
 
-func getResultMap(r *apollo.Response) map[string]interface{} {
-	m := make(map[string]interface{})
+func getResult(r *apollo.Response) interface{} {
 	ok := r.GetOk()
 	if ok != "" {
-		m["ok"] = "ok"
+		return OK
 	}
 	c := r.GetColumns()
 	if c != nil {
-		m["columns"] = formatColumns(c)
+		return formatColumns(c)
 	}
 	kcp := r.GetKeyColumnsPair()
 	if kcp != nil {
-		m["keyColumnsPair"] = formatKcp(kcp)
+		return formatKcp(kcp)
 	}
 	kcl := r.GetKeyColumnsList()
 	if kcl != nil {
-		m["keyColumnsList"] = formatKcl(kcl)
+		return formatKcl(kcl)
 	}
 	pl := r.GetProplist()
 	if pl != nil {
-		m["proplist"] = formatColumns(pl)
+		return formatColumns(pl)
 	}
 	it := r.GetKcpIt()
 	if it != nil {
-		m["kcpIt"] = formatKcpIt(it)
+		return formatKcpIt(it)
+	} else {
+		return nil
 	}
-	return m
 }
 
-func getErrorMap(e *apollo.Error) map[string]string {
+func getError(e *apollo.Error) map[string]string {
 	m := make(map[string]string)
 	t := e.GetTransport()
 	if t != "" {
@@ -527,47 +506,29 @@ func formatColumns(c *apollo.Fields) map[string]interface{} {
 	return formatFields(fields)
 }
 
-func formatKcp(kcp *apollo.KeyColumnsPair) map[string]interface{} {
+func formatKcp(kcp *apollo.KeyColumnsPair) KVP {
 	keyFields := kcp.GetKey()
 	columnFields := kcp.GetColumns()
 	keyMap := formatFields(keyFields)
 	columnsMap := formatFields(columnFields)
-	m := make(map[string]interface{})
-	m["key"] = keyMap
-	m["columns"] = columnsMap
-	return m
+	return KVP{keyMap, columnsMap}
 }
 
-func formatKcpIt(kcpIt *apollo.KcpIt) map[string]interface{} {
-	kcp := kcpIt.GetKeyColumnsPair()
+func formatKcpIt(kcpIt *apollo.KcpIt) Iterator {
+	kvp := kcpIt.GetKeyColumnsPair()
 	it := kcpIt.It
-
-	m := make(map[string]interface{})
-	m["kcp"] = formatKcp(kcp)
-	m["it"] = it
-
-	return m
+	return Iterator{formatKcp(kvp), it}
 }
 
-func formatKcl(kcl *apollo.KeyColumnsList) map[string]interface{} {
-	list := kcl.GetList()
+func formatKcl(kcl *apollo.KeyColumnsList) KVL {
+	protoList := kcl.GetList()
+	list := make([]KVP, len(protoList))
+	for i := range protoList {
+		list[i] = formatKcp(protoList[i])
+	}
 	cont := kcl.GetContinuation()
-	array := make([]map[string]interface{}, len(list))
-	for i := range list {
-		array[i] = formatKcp(list[i])
-	}
-
-	m := make(map[string]interface{})
-	m["list"] = array
-
 	contKey := cont.GetKey()
-	if contKey == nil {
-		m["continuation"] = "complete"
-	} else {
-		key := formatFields(contKey)
-		m["continuation"] = key
-	}
-	return m
+	return KVL{list, formatFields(contKey)}
 }
 
 func formatFields(fields []*apollo.Field) map[string]interface{} {
@@ -617,12 +578,12 @@ func fixOption(k string, v interface{}, opts []*apollo.TableOption) []*apollo.Ta
 		}
 		opt = &apollo.TableOption{&apollo.TableOption_Type{tableType}}
 	case "data_model":
-		dataModel := apollo.DataModel_BINARY
+		dataModel := apollo.DataModel_ARRAY
 		switch v {
-		case "array":
-			dataModel = apollo.DataModel_ARRAY
-		case "leveldbwrapped":
-			dataModel = apollo.DataModel_HASH
+		case "kv":
+			dataModel = apollo.DataModel_KV
+		case "map":
+			dataModel = apollo.DataModel_MAP
 		default:
 		}
 		opt = &apollo.TableOption{&apollo.TableOption_DataModel{dataModel}}
@@ -734,4 +695,67 @@ func fixField(k string, v interface{}, fields []*apollo.Field) []*apollo.Field {
 	copy(newFields, fields[:])
 	newFields[len-1] = field
 	return newFields
+}
+
+func fixUpdateOperations(upOps []UpdateOperation) []*apollo.UpdateOperation {
+	updateOperations := make([]*apollo.UpdateOperation, 0)
+	for i := range upOps {
+		updateOperations = fixUpdateOperation(upOps[i], updateOperations)
+	}
+	return updateOperations
+}
+
+func fixUpdateOperation(upOp UpdateOperation, updateOperations []*apollo.UpdateOperation) []*apollo.UpdateOperation {
+	i := upOp.Instruction
+	instruction := apollo.UpdateInstruction_INCREMENT
+	switch i {
+	case Overwrite:
+		instruction = apollo.UpdateInstruction_OVERWRITE
+	default:
+	}
+	var updateInstruction *apollo.UpdateInstruction
+	updateInstruction = &apollo.UpdateInstruction{
+		instruction,
+		*proto.Int32(int32(upOp.Treshold)),
+		*proto.Int32(int32(upOp.SetValue))}
+
+	value := fixValue(upOp.Value)
+	defaultValue := fixValue(upOp.DefaultValue)
+
+	var updateOperation *apollo.UpdateOperation
+	updateOperation = &apollo.UpdateOperation{
+		*proto.String(upOp.Field),
+		updateInstruction,
+		value,
+		defaultValue}
+
+	len := len(updateOperations) + 1
+	newUpdateOperations := make([]*apollo.UpdateOperation, len)
+	copy(newUpdateOperations, updateOperations[:])
+	newUpdateOperations[len-1] = updateOperation
+	return newUpdateOperations
+}
+
+func fixValue(v interface{}) *apollo.Value {
+	var value *apollo.Value
+	switch v.(type) {
+	case string:
+		value = &apollo.Value{&apollo.Value_String_{*proto.String(v.(string))}}
+	case []byte:
+		value = &apollo.Value{&apollo.Value_Binary{v.([]byte)}}
+	case int:
+		value = &apollo.Value{&apollo.Value_Int{*proto.Int32(int32(v.(int)))}}
+	case float64:
+		value = &apollo.Value{&apollo.Value_Double{*proto.Float64(v.(float64))}}
+	case bool:
+		value = &apollo.Value{&apollo.Value_Boolean{*proto.Bool(v.(bool))}}
+	default:
+		if v == nil {
+			value = &apollo.Value{&apollo.Value_Null{
+				[]byte{},
+			},
+			}
+		}
+	}
+	return value
 }
