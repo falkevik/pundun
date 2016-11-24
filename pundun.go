@@ -1,6 +1,7 @@
 package pundun
 
 import (
+	"encoding/binary"
 	"errors"
 	"github.com/erdemaksu/apollo"
 	"github.com/golang/protobuf/proto"
@@ -71,8 +72,8 @@ type UpdateOperation struct {
 	Instruction  int
 	Value        interface{}
 	DefaultValue interface{}
-	Treshold     int
-	SetValue     int
+	Treshold     *uint32
+	SetValue     *uint32
 }
 
 func tidServe(tid, max int32, req chan string, resp chan int32) {
@@ -714,13 +715,15 @@ func fixUpdateOperation(upOp UpdateOperation, updateOperations []*apollo.UpdateO
 	default:
 	}
 	var updateInstruction *apollo.UpdateInstruction
+	treshold := encodeInt32(upOp.Treshold)
+	setvalue := encodeInt32(upOp.SetValue)
 	updateInstruction = &apollo.UpdateInstruction{
 		instruction,
-		*proto.Int32(int32(upOp.Treshold)),
-		*proto.Int32(int32(upOp.SetValue))}
+		treshold,
+		setvalue}
 
 	value := fixValue(upOp.Value)
-	defaultValue := fixValue(upOp.DefaultValue)
+	defaultValue := fixDefaultValue(upOp.DefaultValue)
 
 	var updateOperation *apollo.UpdateOperation
 	updateOperation = &apollo.UpdateOperation{
@@ -752,10 +755,27 @@ func fixValue(v interface{}) *apollo.Value {
 	default:
 		if v == nil {
 			value = &apollo.Value{&apollo.Value_Null{
-				[]byte{},
-			},
+				[]byte{}},
 			}
 		}
 	}
 	return value
+}
+
+func fixDefaultValue(v interface{}) *apollo.Value {
+	if v == nil {
+		return nil
+	} else {
+		return fixValue(v)
+	}
+}
+
+func encodeInt32(v *uint32) []byte {
+	if v != nil {
+		bytes := make([]byte, 4)
+		binary.BigEndian.PutUint32(bytes, *v)
+		return bytes
+	} else {
+		return make([]byte, 0)
+	}
 }

@@ -20,8 +20,10 @@ type Session struct {
 }
 
 type Client struct {
-	data []byte
-	ch   chan []byte
+	data        []byte
+	ch          chan []byte
+	id          uint16
+	cancelTimer chan bool
 }
 
 func Connect(host, user, pass string) (Session, error) {
@@ -44,8 +46,8 @@ func Connect(host, user, pass string) (Session, error) {
 	log.Println("Connected to pundun node.")
 
 	manChan := make(chan int, 1024)
-	sendChan := make(chan Client, 1024)
-	recvChan := make(chan []byte, 1024)
+	sendChan := make(chan Client, 65535)
+	recvChan := make(chan []byte, 65535)
 
 	go serverLoop(conn, manChan, sendChan, recvChan)
 	go recvLoop(conn, recvChan)
@@ -69,42 +71,38 @@ func GetTid(s Session) int32 {
 
 func SendMsg(s Session, data []byte) []byte {
 	ch := make(chan []byte)
-	s.sendChan <- Client{data, ch}
-	select {
-	case pdu := <-ch:
-		close(ch)
-		return pdu
-	case <-time.After(30 * time.Second):
-		close(ch)
-		log.Println("timed out")
-		return []byte{}
-	}
+	s.sendChan <- Client{data: data, ch: ch}
+	pdu := <-ch
+	return pdu
 }
 
 func serverLoop(conn net.Conn, manChan chan int, sendChan chan Client, recvChan chan []byte) {
-	var cid uint16 = 65535
+	var cid uint16 = 0
 	clients := make(map[uint16]Client)
+	timeout := make(chan uint16, 65535)
 	defer close(sendChan)
+	defer close(timeout)
 	defer conn.Close()
 	for {
 		select {
-		case msg := <-manChan:
+		case msg, _ := <-manChan:
 			switch msg {
 			case stop:
-				log.Println("Stopping session..")
+				log.Println("Stopping server loop")
+				endClients(clients)
 				return
 			}
-		case data := <-recvChan:
+		case toCid, _ := <-timeout:
+			removeClient(toCid, clients, []byte{})
+		case data, _ := <-recvChan:
 			len := len(data)
 			corrIdBytes := make([]byte, 2)
 			pduBytes := make([]byte, len-2)
 			copy(corrIdBytes, data[:2])
 			copy(pduBytes, data[2:])
 			corrId := binary.BigEndian.Uint16(corrIdBytes)
-			client := clients[corrId]
-			client.ch <- pduBytes
-			delete(clients, corrId)
-		case client := <-sendChan:
+			removeClient(corrId, clients, pduBytes)
+		case client, _ := <-sendChan:
 			if checkCorrId(clients, cid) {
 				corrId := make([]byte, 2)
 				binary.BigEndian.PutUint16(corrId, cid)
@@ -114,25 +112,24 @@ func serverLoop(conn net.Conn, manChan chan int, sendChan chan Client, recvChan 
 				binary.BigEndian.PutUint32(wire, len+2)
 				copy(wire[4:], corrId)
 				copy(wire[6:], data)
-				clients[cid] = Client{[]byte{}, client.ch}
+				cancel := make(chan bool)
+				client.id = cid
+				client.cancelTimer = cancel
+				clients[cid] = client
 				conn.Write(wire)
+				go expireAfter(30, cid, timeout, cancel)
 				cid++
 			} else {
 				client.ch <- []byte{}
+				close(client.ch)
 			}
 		}
 	}
 }
 
 func checkCorrId(clients map[uint16]Client, corrId uint16) bool {
-	if oldClient, ok := clients[corrId]; ok {
-		if _, open := <-oldClient.ch; open {
-			return false
-		} else {
-			delete(clients, corrId)
-			return true
-		}
-
+	if _, ok := clients[corrId]; ok {
+		return false
 	} else {
 		return true
 	}
@@ -167,4 +164,42 @@ func tidServer(tid uint16, tidChan chan uint16) {
 		tidChan <- tid
 		tid++
 	}
+}
+
+func expireAfter(t int, cid uint16, timeout chan uint16, cancel chan bool) {
+	timer := time.NewTimer(time.Duration(t) * time.Second)
+	select {
+	case <-timer.C:
+		select {
+		case timeout <- cid:
+		default:
+		}
+	case <-cancel:
+		timer.Stop()
+	}
+}
+
+func removeClient(cid uint16, clients map[uint16]Client, bytes []byte) {
+	if client, exists := clients[cid]; exists {
+		endClient(client, bytes)
+		delete(clients, cid)
+	}
+}
+
+func endClients(clients map[uint16]Client) {
+	for cid, client := range clients {
+		endClient(client, []byte{})
+		delete(clients, cid)
+	}
+}
+
+func endClient(client Client, bytes []byte) {
+	defer close(client.cancelTimer)
+	defer close(client.ch)
+	select {
+	case client.cancelTimer <- true:
+	default:
+		//Do nothing
+	}
+	client.ch <- bytes
 }

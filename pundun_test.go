@@ -52,17 +52,33 @@ func TestRun1(t *testing.T) {
 		"ts":   ts,
 	}
 	columns := map[string]interface{}{
-		"name":   "John",
-		"age":    21,
-		"bin":    []byte{0, 0, 0, 1},
-		"bool":   true,
-		"double": 5.5,
+		"name":    "John",
+		"counter": 1,
+		"bin":     []byte{0, 0, 0, 1},
+		"bool":    true,
+		"double":  5.5,
 	}
-
-	upOp := []UpdateOperation{UpdateOperation{
-		Field:       "age",
-		Instruction: Increment,
-		Value:       1}}
+	var treshold uint32 = 2
+	var setvalue uint32 = 1
+	upOp := []UpdateOperation{
+		UpdateOperation{
+			Field:        "new_counter_1",
+			Instruction:  Increment,
+			Value:        1,
+			DefaultValue: 0,
+			Treshold:     &treshold,
+			SetValue:     &setvalue},
+		UpdateOperation{
+			Field:       "new_counter_2",
+			Instruction: Increment,
+			Value:       1,
+			Treshold:    &treshold,
+			SetValue:    &setvalue},
+		UpdateOperation{
+			Field:       "counter",
+			Instruction: Increment,
+			Value:       1},
+	}
 
 	log.Println("Write")
 	res, err = Write(session, tableName, key, columns)
@@ -158,11 +174,11 @@ func TestRun3(t *testing.T) {
 	log.Println("Testing Concurrent Operations..")
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	session, err := Connect("127.0.0.1:8887", "admin", "admin")
+	defer Disconnect(session)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	defer Disconnect(session)
 
 	tableName := "ctt"
 	keyDef := []string{"ts"}
@@ -179,10 +195,10 @@ func TestRun3(t *testing.T) {
 
 	res, err := CreateTable(session, tableName, keyDef, options)
 
-	max := 65535
-
+	reduce := make(chan bool, 1024)
+	defer close(reduce)
+	max := 65535 * 3
 	i := 0
-	reduce := make(chan bool, i)
 	fail := 0
 
 	for i < max {
@@ -198,7 +214,7 @@ func TestRun3(t *testing.T) {
 			i--
 		}
 	}
-	log.Printf("All routines returned. Failed: %v\n", fail)
+	log.Printf("All routines (%v) returned. Failed: %v\n", max, fail)
 	res, err = DeleteTable(session, tableName)
 	log.Printf("Result: %v\n", res)
 }
@@ -213,7 +229,6 @@ func writeRead(s Session, tableName string, reduce chan bool) {
 		"timestamp": ts,
 	}
 
-	time.Sleep(1 * time.Millisecond)
 	_, err := Write(s, tableName, key, columns)
 	if err != nil {
 		reduce <- false
@@ -225,14 +240,20 @@ func writeRead(s Session, tableName string, reduce chan bool) {
 		reduce <- false
 		return
 	}
-	cols := res.(map[string]interface{})
-	resTs := cols["timestamp"].([]byte)
-	comp := bytes.Compare(resTs, ts)
-	if comp == 0 {
-		reduce <- true
-		return
-	} else {
+
+	switch res.(type) {
+	case map[string]interface{}:
+		cols := res.(map[string]interface{})
+		resTs := cols["timestamp"].([]byte)
+		comp := bytes.Compare(resTs, ts)
+		if comp == 0 {
+			reduce <- true
+			return
+		} else {
+			reduce <- false
+			return
+		}
+	default:
 		reduce <- false
-		return
 	}
 }
