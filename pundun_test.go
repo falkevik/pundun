@@ -197,7 +197,7 @@ func TestRun3(t *testing.T) {
 
 	reduce := make(chan bool, 1024)
 	defer close(reduce)
-	max := 65535 * 3
+	max := 65535
 	i := 0
 	fail := 0
 
@@ -227,6 +227,7 @@ func writeRead(s Session, tableName string, reduce chan bool) {
 	}
 	columns := map[string]interface{}{
 		"timestamp": ts,
+		"binary":    make([]byte, 65535),
 	}
 
 	_, err := Write(s, tableName, key, columns)

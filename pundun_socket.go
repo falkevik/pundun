@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"github.com/erdemaksu/scram"
+	"io"
 	"log"
 	"net"
 	"time"
@@ -44,7 +45,6 @@ func Connect(host, user, pass string) (Session, error) {
 		return Session{}, authErr
 	}
 	log.Println("Connected to pundun node.")
-
 	manChan := make(chan int, 1024)
 	sendChan := make(chan Client, 65535)
 	recvChan := make(chan []byte, 65535)
@@ -149,9 +149,9 @@ func recvLoop(conn net.Conn, recvChan chan []byte) {
 			// Receive encoded pdu
 			len := binary.BigEndian.Uint32(lenBuf)
 			buf := make([]byte, len)
-			n, err = conn.Read(buf)
+			n, err = io.ReadFull(conn, buf)
 			if uint32(n) != len || err != nil {
-				log.Println("error: ", err)
+				log.Printf("%v ?= %v || err ?= %v\n", n, len, err)
 			} else {
 				recvChan <- buf
 			}
