@@ -12,11 +12,25 @@ const (
 	timeout = 60
 )
 
+type Tda struct {
+	NumOfBuckets int32
+	TimeMargin   TimeMargin
+	TsField      string
+	Precision    int
+}
+
 type Wrapper struct {
 	NumOfBuckets int32
 	TimeMargin   TimeMargin
 	SizeMargin   SizeMargin
 }
+
+const (
+	Second      = 0
+	Millisecond = 1
+	Microsecond = 2
+	Nanosecond  = 3
+)
 
 const (
 	Seconds = 0
@@ -26,6 +40,7 @@ const (
 
 const (
 	Megabytes = 0
+	Gigabytes = 1
 )
 
 type TimeMargin struct {
@@ -65,6 +80,22 @@ type Iterator struct {
 const (
 	Increment = 0
 	Overwrite = 1
+)
+
+const (
+	Leveldb           = 0
+	MemLeveldb        = 1
+	LeveldbWrapped    = 2
+	MemLeveldbWrapped = 3
+	LeveldbTda        = 4
+	MemLeveldbTda     = 5
+)
+
+const (
+	VirtualNodes = 0
+	Consistent   = 1
+	Uniform      = 2
+	Rendezvous   = 3
 )
 
 type UpdateOperation struct {
@@ -542,7 +573,7 @@ func formatFields(fields []*apollo.Field) map[string]interface{} {
 		case *apollo.Field_Binary:
 			m[f.Name] = f.GetBinary()
 		case *apollo.Field_Int:
-			m[f.Name] = int(f.GetInt())
+			m[f.Name] = int64(f.GetInt())
 		case *apollo.Field_Double:
 			m[f.Name] = f.GetDouble()
 		case *apollo.Field_Boolean:
@@ -569,12 +600,16 @@ func fixOption(k string, v interface{}, opts []*apollo.TableOption) []*apollo.Ta
 	case "type":
 		tableType := apollo.Type_LEVELDB
 		switch v {
-		case "memleveldb":
+		case MemLeveldb:
 			tableType = apollo.Type_MEMLEVELDB
-		case "leveldbwrapped":
+		case LeveldbWrapped:
 			tableType = apollo.Type_LEVELDBWRAPPED
-		case "memleveldbwrapped":
+		case MemLeveldbWrapped:
 			tableType = apollo.Type_MEMLEVELDBWRAPPED
+		case LeveldbTda:
+			tableType = apollo.Type_LEVELDBTDA
+		case MemLeveldbTda:
+			tableType = apollo.Type_MEMLEVELDBTDA
 		default:
 		}
 		opt = &apollo.TableOption{&apollo.TableOption_Type{tableType}}
@@ -591,6 +626,23 @@ func fixOption(k string, v interface{}, opts []*apollo.TableOption) []*apollo.Ta
 	case "wrapper":
 		wrapper := fixWrapper(v.(Wrapper))
 		opt = &apollo.TableOption{&apollo.TableOption_Wrapper{wrapper}}
+	case "tda":
+		tda := fixTda(v.(Tda))
+		opt = &apollo.TableOption{&apollo.TableOption_Tda{tda}}
+	case "hashing_method":
+		hm := apollo.HashingMethod_UNIFORM
+		switch v {
+		case VirtualNodes:
+			hm = apollo.HashingMethod_VIRTUALNODES
+		case Consistent:
+			hm = apollo.HashingMethod_CONSISTENT
+		case Uniform:
+			hm = apollo.HashingMethod_UNIFORM
+		case Rendezvous:
+			hm = apollo.HashingMethod_RENDEZVOUS
+		default:
+		}
+		opt = &apollo.TableOption{&apollo.TableOption_HashingMethod{hm}}
 	default:
 	}
 	if opt != nil {
@@ -601,6 +653,46 @@ func fixOption(k string, v interface{}, opts []*apollo.TableOption) []*apollo.Ta
 		return newOpts
 	} else {
 		return opts
+	}
+}
+
+func fixTda(t Tda) *apollo.Tda {
+	tm := &t.TimeMargin
+	tda := apollo.Tda{
+		NumOfBuckets: t.NumOfBuckets,
+		TsField:      t.TsField,
+	}
+	fixTdaMargin(&tda, tm)
+	fixPrecision(&tda, t.Precision)
+	return &tda
+}
+
+func fixPrecision(tda *apollo.Tda, p int) {
+	precision := apollo.TimeUnit_SECOND
+	switch p {
+	case Millisecond:
+		precision = apollo.TimeUnit_MILLISECOND
+	case Microsecond:
+		precision = apollo.TimeUnit_MICROSECOND
+	case Nanosecond:
+		precision = apollo.TimeUnit_NANOSECOND
+	default:
+	}
+	tda.Precision = precision
+}
+
+func fixTdaMargin(tda *apollo.Tda, tm *TimeMargin) {
+	if tm != nil {
+		timeUnit := tm.Unit
+		t := tm.Value
+		switch timeUnit {
+		case Seconds:
+			tda.TimeMargin = &apollo.Tda_Seconds{*proto.Int32(t)}
+		case Minutes:
+			tda.TimeMargin = &apollo.Tda_Minutes{*proto.Int32(t)}
+		case Hours:
+			tda.TimeMargin = &apollo.Tda_Hours{*proto.Int32(t)}
+		}
 	}
 }
 
@@ -638,6 +730,8 @@ func fixSizeMargin(w *apollo.Wrapper, sm *SizeMargin) {
 		switch sizeUnit {
 		case Megabytes:
 			w.SizeMargin = &apollo.Wrapper_Megabytes{*proto.Int32(s)}
+		case Gigabytes:
+			w.SizeMargin = &apollo.Wrapper_Gigabytes{*proto.Int32(s)}
 		}
 	}
 }
@@ -672,7 +766,23 @@ func fixField(k string, v interface{}, fields []*apollo.Field) []*apollo.Field {
 		}
 	case int:
 		field = &apollo.Field{*proto.String(k),
-			&apollo.Field_Int{*proto.Int32(int32(v.(int)))},
+			&apollo.Field_Int{*proto.Int64(int64(v.(int)))},
+		}
+	case int8:
+		field = &apollo.Field{*proto.String(k),
+			&apollo.Field_Int{*proto.Int64(int64(v.(int8)))},
+		}
+	case int16:
+		field = &apollo.Field{*proto.String(k),
+			&apollo.Field_Int{*proto.Int64(int64(v.(int16)))},
+		}
+	case int32:
+		field = &apollo.Field{*proto.String(k),
+			&apollo.Field_Int{*proto.Int64(int64(v.(int32)))},
+		}
+	case int64:
+		field = &apollo.Field{*proto.String(k),
+			&apollo.Field_Int{*proto.Int64(v.(int64))},
 		}
 	case float64:
 		field = &apollo.Field{*proto.String(k),
@@ -747,7 +857,15 @@ func fixValue(v interface{}) *apollo.Value {
 	case []byte:
 		value = &apollo.Value{&apollo.Value_Binary{v.([]byte)}}
 	case int:
-		value = &apollo.Value{&apollo.Value_Int{*proto.Int32(int32(v.(int)))}}
+		value = &apollo.Value{&apollo.Value_Int{*proto.Int64(int64(v.(int)))}}
+	case int8:
+		value = &apollo.Value{&apollo.Value_Int{*proto.Int64(int64(v.(int8)))}}
+	case int16:
+		value = &apollo.Value{&apollo.Value_Int{*proto.Int64(int64(v.(int16)))}}
+	case int32:
+		value = &apollo.Value{&apollo.Value_Int{*proto.Int64(int64(v.(int32)))}}
+	case int64:
+		value = &apollo.Value{&apollo.Value_Int{*proto.Int64(v.(int64))}}
 	case float64:
 		value = &apollo.Value{&apollo.Value_Double{*proto.Float64(v.(float64))}}
 	case bool:
