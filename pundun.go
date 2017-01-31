@@ -103,7 +103,7 @@ type UpdateOperation struct {
 	Instruction  int
 	Value        interface{}
 	DefaultValue interface{}
-	Treshold     *uint32
+	Threshold    *uint32
 	SetValue     *uint32
 }
 
@@ -825,11 +825,11 @@ func fixUpdateOperation(upOp UpdateOperation, updateOperations []*apollo.UpdateO
 	default:
 	}
 	var updateInstruction *apollo.UpdateInstruction
-	treshold := encodeInt32(upOp.Treshold)
+	threshold := encodeInt32(upOp.Threshold)
 	setvalue := encodeInt32(upOp.SetValue)
 	updateInstruction = &apollo.UpdateInstruction{
 		instruction,
-		treshold,
+		threshold,
 		setvalue}
 
 	value := fixValue(upOp.Value)

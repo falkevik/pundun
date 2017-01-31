@@ -57,7 +57,7 @@ func TestRun1(t *testing.T) {
 		"bool":    true,
 		"double":  5.5,
 	}
-	var treshold uint32 = 2
+	var threshold uint32 = 2
 	var setvalue uint32 = 1
 	upOp := []UpdateOperation{
 		UpdateOperation{
@@ -65,13 +65,13 @@ func TestRun1(t *testing.T) {
 			Instruction:  Increment,
 			Value:        1,
 			DefaultValue: 0,
-			Treshold:     &treshold,
+			Threshold:    &threshold,
 			SetValue:     &setvalue},
 		UpdateOperation{
 			Field:       "new_counter_2",
 			Instruction: Increment,
 			Value:       1,
-			Treshold:    &treshold,
+			Threshold:   &threshold,
 			SetValue:    &setvalue},
 		UpdateOperation{
 			Field:       "counter",
@@ -268,7 +268,7 @@ func TestRun4(t *testing.T) {
 		"bool":    true,
 		"double":  5.5,
 	}
-	var treshold uint32 = 2
+	var threshold uint32 = 2
 	var setvalue uint32 = 1
 	upOp := []UpdateOperation{
 		UpdateOperation{
@@ -276,13 +276,13 @@ func TestRun4(t *testing.T) {
 			Instruction:  Increment,
 			Value:        1,
 			DefaultValue: 0,
-			Treshold:     &treshold,
+			Threshold:    &threshold,
 			SetValue:     &setvalue},
 		UpdateOperation{
 			Field:       "new_counter_2",
 			Instruction: Increment,
 			Value:       1,
-			Treshold:    &treshold,
+			Threshold:   &threshold,
 			SetValue:    &setvalue},
 		UpdateOperation{
 			Field:       "counter",
