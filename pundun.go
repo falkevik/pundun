@@ -13,14 +13,14 @@ const (
 )
 
 type Tda struct {
-	NumOfBuckets int32
+	NumOfBuckets uint32
 	TimeMargin   TimeMargin
 	TsField      string
 	Precision    int
 }
 
 type Wrapper struct {
-	NumOfBuckets int32
+	NumOfBuckets uint32
 	TimeMargin   TimeMargin
 	SizeMargin   SizeMargin
 }
@@ -45,12 +45,12 @@ const (
 
 type TimeMargin struct {
 	Unit  int
-	Value int32
+	Value uint32
 }
 
 type SizeMargin struct {
 	Unit  int
-	Value int32
+	Value uint32
 }
 
 const (
@@ -306,7 +306,7 @@ func ReadRange(s Session, tableName string, skey, ekey map[string]interface{}, l
 		TableName: *proto.String(tableName),
 		StartKey:  skeyFields,
 		EndKey:    ekeyFields,
-		Limit:     *proto.Int32(int32(limit)),
+		Limit:     *proto.Uint32(uint32(limit)),
 	}
 
 	procedure := &apollo.ApolloPdu_ReadRange{
@@ -326,7 +326,7 @@ func ReadRangeN(s Session, tableName string, skey map[string]interface{}, n int)
 	readRangeN := &apollo.ReadRangeN{
 		TableName: *proto.String(tableName),
 		StartKey:  skeyFields,
-		N:         *proto.Int32(int32(n)),
+		N:         *proto.Uint32(uint32(n)),
 	}
 
 	procedure := &apollo.ApolloPdu_ReadRangeN{
@@ -446,13 +446,13 @@ func run_transaction(s Session, pdu *apollo.ApolloPdu) (interface{}, error) {
 	return res, err
 }
 
-func make_pdu(pdu *apollo.ApolloPdu, tid int32) *apollo.ApolloPdu {
+func make_pdu(pdu *apollo.ApolloPdu, tid uint32) *apollo.ApolloPdu {
 	version := &apollo.Version{
-		Major: *proto.Int32(0),
-		Minor: *proto.Int32(1),
+		Major: *proto.Uint32(0),
+		Minor: *proto.Uint32(1),
 	}
 	pdu.Version = version
-	pdu.TransactionId = *proto.Int32(tid)
+	pdu.TransactionId = *proto.Uint32(tid)
 	return pdu
 }
 
@@ -687,11 +687,11 @@ func fixTdaMargin(tda *apollo.Tda, tm *TimeMargin) {
 		t := tm.Value
 		switch timeUnit {
 		case Seconds:
-			tda.TimeMargin = &apollo.Tda_Seconds{*proto.Int32(t)}
+			tda.TimeMargin = &apollo.Tda_Seconds{*proto.Uint32(t)}
 		case Minutes:
-			tda.TimeMargin = &apollo.Tda_Minutes{*proto.Int32(t)}
+			tda.TimeMargin = &apollo.Tda_Minutes{*proto.Uint32(t)}
 		case Hours:
-			tda.TimeMargin = &apollo.Tda_Hours{*proto.Int32(t)}
+			tda.TimeMargin = &apollo.Tda_Hours{*proto.Uint32(t)}
 		}
 	}
 }
@@ -714,11 +714,11 @@ func fixTimeMargin(w *apollo.Wrapper, tm *TimeMargin) {
 		t := tm.Value
 		switch timeUnit {
 		case Seconds:
-			w.TimeMargin = &apollo.Wrapper_Seconds{*proto.Int32(t)}
+			w.TimeMargin = &apollo.Wrapper_Seconds{*proto.Uint32(t)}
 		case Minutes:
-			w.TimeMargin = &apollo.Wrapper_Minutes{*proto.Int32(t)}
+			w.TimeMargin = &apollo.Wrapper_Minutes{*proto.Uint32(t)}
 		case Hours:
-			w.TimeMargin = &apollo.Wrapper_Hours{*proto.Int32(t)}
+			w.TimeMargin = &apollo.Wrapper_Hours{*proto.Uint32(t)}
 		}
 	}
 }
@@ -729,9 +729,9 @@ func fixSizeMargin(w *apollo.Wrapper, sm *SizeMargin) {
 		s := sm.Value
 		switch sizeUnit {
 		case Megabytes:
-			w.SizeMargin = &apollo.Wrapper_Megabytes{*proto.Int32(s)}
+			w.SizeMargin = &apollo.Wrapper_Megabytes{*proto.Uint32(s)}
 		case Gigabytes:
-			w.SizeMargin = &apollo.Wrapper_Gigabytes{*proto.Int32(s)}
+			w.SizeMargin = &apollo.Wrapper_Gigabytes{*proto.Uint32(s)}
 		}
 	}
 }

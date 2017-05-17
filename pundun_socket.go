@@ -64,9 +64,9 @@ func Disconnect(s Session) {
 	s.manChan <- stop
 }
 
-func GetTid(s Session) int32 {
+func GetTid(s Session) uint32 {
 	tid := <-s.tidChan
-	return int32(tid)
+	return uint32(tid)
 }
 
 func SendMsg(s Session, data []byte) []byte {
