@@ -22,7 +22,7 @@ func TestRun1(t *testing.T) {
 		"data_model":         "array",
 		"comparator":         "descending",
 		"time_series":        false,
-		"shards":             8,
+		"num_of_shards":      8,
 		"distributed":        true,
 		"replication_factor": 1,
 		"hash_exclude":       []string{"ts"},
@@ -155,7 +155,7 @@ func TestRun2(t *testing.T) {
 		},
 		"comparator":         "descending",
 		"time_series":        false,
-		"shards":             8,
+		"num_of_shards":      8,
 		"distributed":        true,
 		"replication_factor": 1,
 		"hash_exclude":       []string{"ts"},
@@ -186,7 +186,7 @@ func TestRun3(t *testing.T) {
 		"data_model":         "array",
 		"comparator":         "descending",
 		"time_series":        false,
-		"shards":             8,
+		"num_of_shards":      8,
 		"distributed":        true,
 		"replication_factor": 1,
 		"hash_exclude":       []string{"ts"},
@@ -247,7 +247,7 @@ func TestRun4(t *testing.T) {
 		"data_model":         "array",
 		"comparator":         "descending",
 		"time_series":        false,
-		"shards":             8,
+		"num_of_shards":      8,
 		"distributed":        true,
 		"replication_factor": 1,
 		"hash_method":        Rendezvous,
@@ -336,6 +336,104 @@ func TestRun4(t *testing.T) {
 		}
 	}
 	log.Printf("All routines (%v) returned. Failed: %v\n", max, fail)
+
+	log.Printf("Delete Table: %v\n", tableName)
+	res, err = DeleteTable(session, tableName)
+	log.Printf("Delete Table Result: %v\n", res)
+}
+
+func TestRun5(t *testing.T) {
+	log.Println("Testing Rocksdb, ttl and indexing..")
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	session, err := Connect("127.0.0.1:8887", "admin", "admin")
+	defer Disconnect(session)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	tableName := "rocksdb_test"
+	keyDef := []string{"ts"}
+	options := map[string]interface{}{
+		"type":               Rocksdb,
+		"ttl":                60,
+		"data_model":         "array",
+		"comparator":         "descending",
+		"time_series":        false,
+		"num_of_shards":      8,
+		"distributed":        true,
+		"replication_factor": 1,
+	}
+
+	log.Printf("Create Table: %v\n", tableName)
+	res, err := CreateTable(session, tableName, keyDef, options)
+	log.Printf("Create Table result: %v\n", res)
+
+	ts := time.Now().UnixNano()
+	key := map[string]interface{}{
+		"ts": ts,
+	}
+	columns := map[string]interface{}{
+		"name":    "John",
+		"counter": 1,
+		"bin":     []byte{0, 0, 0, 1},
+		"bool":    true,
+		"double":  5.5,
+	}
+	var threshold uint32 = 2
+	var setvalue uint32 = 1
+	upOp := []UpdateOperation{
+		UpdateOperation{
+			Field:        "new_counter_1",
+			Instruction:  Increment,
+			Value:        1,
+			DefaultValue: 0,
+			Threshold:    &threshold,
+			SetValue:     &setvalue},
+		UpdateOperation{
+			Field:       "new_counter_2",
+			Instruction: Increment,
+			Value:       1,
+			Threshold:   &threshold,
+			SetValue:    &setvalue},
+		UpdateOperation{
+			Field:       "counter",
+			Instruction: Increment,
+			Value:       1},
+	}
+
+	log.Println("Add Index")
+	res, err = AddIndex(session, tableName, []string{"name"})
+	log.Printf("Add Index: %v\n", res)
+
+	log.Println("Write")
+	res, err = Write(session, tableName, key, columns)
+	log.Printf("Write result: %v\n", res)
+
+	log.Println("Update")
+	res, err = Update(session, tableName, key, upOp)
+	log.Printf("Update result: %v\n", res)
+
+	log.Println("Read")
+	res, err = Read(session, tableName, key)
+	log.Printf("Read result: %v\n", res)
+
+	log.Println("Index Read")
+	res, err = IndexRead(session, tableName, "name", "John")
+	log.Printf("Index Read result: %v\n", res)
+
+	sts := time.Now().UnixNano()
+	skey := map[string]interface{}{
+		"ts": sts,
+	}
+
+	log.Println("Read Range")
+	res, err = ReadRange(session, tableName, skey, key, 100)
+	log.Printf("Read Range result: %v\n", res)
+
+	log.Println("Read Range N")
+	res, err = ReadRangeN(session, tableName, skey, 2)
+	log.Printf("Read Range N result: %v\n", res)
 
 	log.Printf("Delete Table: %v\n", tableName)
 	res, err = DeleteTable(session, tableName)

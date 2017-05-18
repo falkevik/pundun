@@ -89,6 +89,7 @@ const (
 	MemLeveldbWrapped = 3
 	LeveldbTda        = 4
 	MemLeveldbTda     = 5
+	Rocksdb           = 6
 )
 
 const (
@@ -418,6 +419,67 @@ func Prev(s Session, it []byte) (interface{}, error) {
 
 	procedure := &apollo.ApolloPdu_Prev{
 		Prev: prev,
+	}
+
+	pdu := &apollo.ApolloPdu{
+		Procedure: procedure,
+	}
+
+	res, err := run_transaction(s, pdu)
+	return res, err
+}
+
+func AddIndex(s Session, tableName string,
+	columns []string) (interface{}, error) {
+
+	addIndex := &apollo.AddIndex{
+		TableName: *proto.String(tableName),
+		Columns:   columns,
+	}
+
+	procedure := &apollo.ApolloPdu_AddIndex{
+		AddIndex: addIndex,
+	}
+
+	pdu := &apollo.ApolloPdu{
+		Procedure: procedure,
+	}
+
+	res, err := run_transaction(s, pdu)
+	return res, err
+}
+
+func RemoveIndex(s Session, tableName string,
+	columns []string) (interface{}, error) {
+
+	removeIndex := &apollo.RemoveIndex{
+		TableName: *proto.String(tableName),
+		Columns:   columns,
+	}
+
+	procedure := &apollo.ApolloPdu_RemoveIndex{
+		RemoveIndex: removeIndex,
+	}
+
+	pdu := &apollo.ApolloPdu{
+		Procedure: procedure,
+	}
+
+	res, err := run_transaction(s, pdu)
+	return res, err
+}
+
+func IndexRead(s Session, tableName string,
+	columnName string, term string) (interface{}, error) {
+
+	indexRead := &apollo.IndexRead{
+		TableName:  *proto.String(tableName),
+		ColumnName: *proto.String(columnName),
+		Term:       *proto.String(term),
+	}
+
+	procedure := &apollo.ApolloPdu_IndexRead{
+		IndexRead: indexRead,
 	}
 
 	pdu := &apollo.ApolloPdu{
