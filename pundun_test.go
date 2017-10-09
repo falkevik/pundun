@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+/*
 func TestRun1(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	session, err := Connect("127.0.0.1:8887", "admin", "admin")
@@ -18,7 +19,7 @@ func TestRun1(t *testing.T) {
 	tableName := "ct"
 	keyDef := []string{"imsi", "ts"}
 	options := map[string]interface{}{
-		"type":               Leveldb,
+		"type":               Rocksdb,
 		"data_model":         "array",
 		"comparator":         "descending",
 		"time_series":        false,
@@ -132,44 +133,6 @@ func TestRun1(t *testing.T) {
 }
 
 func TestRun2(t *testing.T) {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	session, err := Connect("127.0.0.1:8887", "admin", "admin")
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	defer Disconnect(session)
-	tableName := "ctw"
-	keyDef := []string{"imsi", "ts"}
-	options := map[string]interface{}{
-		"type":       LeveldbWrapped,
-		"data_model": "map",
-		"wrapper": Wrapper{
-			NumOfBuckets: 5,
-			TimeMargin: TimeMargin{
-				Unit:  Minutes,
-				Value: 5},
-			SizeMargin: SizeMargin{
-				Unit:  Megabytes,
-				Value: 100},
-		},
-		"comparator":         "descending",
-		"time_series":        false,
-		"num_of_shards":      8,
-		"distributed":        true,
-		"replication_factor": 1,
-		"hash_exclude":       []string{"ts"},
-	}
-
-	log.Println("Create Table")
-	res, err := CreateTable(session, tableName, keyDef, options)
-	log.Printf("Create Table result: %v\n", res)
-	log.Println("Delete Table")
-	res, err = DeleteTable(session, tableName)
-	log.Printf("Delete Table result: %v\n", res)
-}
-
-func TestRun3(t *testing.T) {
 	log.Println("Testing Concurrent Operations..")
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	session, err := Connect("127.0.0.1:8887", "admin", "admin")
@@ -182,7 +145,7 @@ func TestRun3(t *testing.T) {
 	tableName := "ctt"
 	keyDef := []string{"ts"}
 	options := map[string]interface{}{
-		"type":               Leveldb,
+		"type":               Rocksdb,
 		"data_model":         "array",
 		"comparator":         "descending",
 		"time_series":        false,
@@ -221,128 +184,8 @@ func TestRun3(t *testing.T) {
 	res, err = DeleteTable(session, tableName)
 	log.Printf("Delete Table Result: %v\n", res)
 }
-
-func TestRun4(t *testing.T) {
-	log.Println("Testing Time Division Access Type..")
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	session, err := Connect("127.0.0.1:8887", "admin", "admin")
-	defer Disconnect(session)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	tableName := "tda"
-	keyDef := []string{"ts"}
-	options := map[string]interface{}{
-		"type": LeveldbTda,
-		"tda": Tda{
-			NumOfBuckets: 5,
-			TimeMargin: TimeMargin{
-				Unit:  Minutes,
-				Value: 5},
-			TsField:   "ts",
-			Precision: Nanosecond,
-		},
-		"data_model":         "array",
-		"comparator":         "descending",
-		"time_series":        false,
-		"num_of_shards":      8,
-		"distributed":        true,
-		"replication_factor": 1,
-		"hash_method":        Rendezvous,
-	}
-
-	log.Printf("Create Table: %v\n", tableName)
-	res, err := CreateTable(session, tableName, keyDef, options)
-	log.Printf("Create Table result: %v\n", res)
-
-	ts := time.Now().UnixNano()
-	key := map[string]interface{}{
-		"ts": ts,
-	}
-	columns := map[string]interface{}{
-		"name":    "John",
-		"counter": 1,
-		"bin":     []byte{0, 0, 0, 1},
-		"bool":    true,
-		"double":  5.5,
-	}
-	var threshold uint32 = 2
-	var setvalue uint32 = 1
-	upOp := []UpdateOperation{
-		UpdateOperation{
-			Field:        "new_counter_1",
-			Instruction:  Increment,
-			Value:        1,
-			DefaultValue: 0,
-			Threshold:    &threshold,
-			SetValue:     &setvalue},
-		UpdateOperation{
-			Field:       "new_counter_2",
-			Instruction: Increment,
-			Value:       1,
-			Threshold:   &threshold,
-			SetValue:    &setvalue},
-		UpdateOperation{
-			Field:       "counter",
-			Instruction: Increment,
-			Value:       1},
-	}
-
-	log.Println("Write")
-	res, err = Write(session, tableName, key, columns)
-	log.Printf("Write result: %v\n", res)
-
-	log.Println("Update")
-	res, err = Update(session, tableName, key, upOp)
-	log.Printf("Update result: %v\n", res)
-
-	log.Println("Read")
-	res, err = Read(session, tableName, key)
-	log.Printf("Read result: %v\n", res)
-
-	sts := time.Now().UnixNano()
-	skey := map[string]interface{}{
-		"ts": sts,
-	}
-
-	log.Println("Read Range")
-	res, err = ReadRange(session, tableName, skey, key, 100)
-	log.Printf("Read Range result: %v\n", res)
-
-	log.Println("Read Range N")
-	res, err = ReadRangeN(session, tableName, skey, 2)
-	log.Printf("Read Range N result: %v\n", res)
-
-	max := 65535
-	log.Printf("Start %v concurrent read/write routines\n", max)
-	reduce := make(chan bool, 1024)
-	defer close(reduce)
-	i := 0
-	fail := 0
-
-	for i < max {
-		go writeRead(session, tableName, reduce)
-		i++
-	}
-	for i > 0 {
-		select {
-		case b := <-reduce:
-			if b == false {
-				fail++
-			}
-			i--
-		}
-	}
-	log.Printf("All routines (%v) returned. Failed: %v\n", max, fail)
-
-	log.Printf("Delete Table: %v\n", tableName)
-	res, err = DeleteTable(session, tableName)
-	log.Printf("Delete Table Result: %v\n", res)
-}
-
-func TestRun5(t *testing.T) {
+*/
+func TestRun3(t *testing.T) {
 	log.Println("Testing Rocksdb, ttl and indexing..")
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	session, err := Connect("127.0.0.1:8887", "admin", "admin")
@@ -352,7 +195,7 @@ func TestRun5(t *testing.T) {
 		return
 	}
 
-	tableName := "rocksdb_test"
+	tableName := "rocksdb_ttl_index_test"
 	keyDef := []string{"ts"}
 	options := map[string]interface{}{
 		"type":               Rocksdb,
@@ -402,8 +245,26 @@ func TestRun5(t *testing.T) {
 			Value:       1},
 	}
 
+	tokenFilter := TokenFilter{
+		Transform: LOWERCASE,
+		Add:       []string{},
+		Delete:    []string{},
+		Stats:     FREQUENCY}
+
+	indexOptions := IndexOptions{
+		CharFilter:  NFC,
+		Tokenizer:   UNICODE_WORD_BOUNDARIES,
+		TokenFilter: tokenFilter,
+	}
+
+	indexConfigList := []IndexConfig{
+		IndexConfig{
+			Column:  "name",
+			Options: indexOptions,
+		}}
+
 	log.Println("Add Index")
-	res, err = AddIndex(session, tableName, []string{"name"})
+	res, err = AddIndex(session, tableName, indexConfigList)
 	log.Printf("Add Index: %v\n", res)
 
 	log.Println("Write")
@@ -419,7 +280,8 @@ func TestRun5(t *testing.T) {
 	log.Printf("Read result: %v\n", res)
 
 	log.Println("Index Read")
-	res, err = IndexRead(session, tableName, "name", "John")
+	var postingFilter PostingFilter
+	res, err = IndexRead(session, tableName, "name", "john", postingFilter)
 	log.Printf("Index Read result: %v\n", res)
 
 	sts := time.Now().UnixNano()

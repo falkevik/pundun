@@ -1,13 +1,15 @@
+// Pundun package provides API for using Pundun Databases.
 package pundun
 
 import (
 	"encoding/binary"
 	"errors"
-	"github.com/erdemaksu/apollo"
 	"github.com/golang/protobuf/proto"
+	"github.com/pundunlabs/apollo"
 	"log"
 )
 
+//Default timeout value for database procedures.
 const (
 	timeout = 60
 )
@@ -108,6 +110,75 @@ type UpdateOperation struct {
 	SetValue     *uint32
 }
 
+type IndexConfig struct {
+	Column  string
+	Options IndexOptions
+}
+
+type IndexOptions struct {
+	CharFilter  int
+	Tokenizer   int
+	TokenFilter TokenFilter
+}
+
+// CharFilter enum values for unicode normalizations.
+const (
+	NFC  = 0
+	NFD  = 1
+	NFKC = 2
+	NFKD = 3
+)
+
+// Tokenizer enum values.
+const (
+	UNICODE_WORD_BOUNDARIES = 0
+)
+
+// TokenFilter definition, usedin IndexOptions.
+type TokenFilter struct {
+	Transform int
+	Add       []string
+	Delete    []string
+	Stats     int
+}
+
+// TokenTransform enum values.
+const (
+	LOWERCASE = 0
+	UPPERCASE = 1
+	CASEFOLD  = 2
+)
+
+// TokenStats enum values.
+const (
+	NOSTATS   = 0
+	UNIQUE    = 1
+	FREQUENCY = 2
+	POSITION  = 3
+)
+
+// Posting is the result og read_index procedure/
+type Posting struct {
+	Key       map[string]interface{}
+	Timestamp uint32
+	Frequency uint32
+	Position  uint32
+}
+
+// Posting Filter as argument to IndexRead
+type PostingFilter struct {
+	SortBy      int
+	StartTs     uint32
+	EndTs       uint32
+	MaxPostings uint32
+}
+
+// SortBy enum values.
+const (
+	RELEVANCE = 0
+	TIMESTAMP = 1
+)
+
 func tidServe(tid, max int32, req chan string, resp chan int32) {
 	for {
 		select {
@@ -130,6 +201,7 @@ func tidServe(tid, max int32, req chan string, resp chan int32) {
 	}
 }
 
+// Create a pundun table.
 func CreateTable(s Session, tableName string, key []string, options map[string]interface{}) (interface{}, error) {
 	tableOptions := fixOptions(options)
 
@@ -151,6 +223,7 @@ func CreateTable(s Session, tableName string, key []string, options map[string]i
 	return res, err
 }
 
+// Delete a pundun table.
 func DeleteTable(s Session, tableName string) (interface{}, error) {
 	deleteTable := &apollo.DeleteTable{
 		TableName: *proto.String(tableName),
@@ -167,6 +240,7 @@ func DeleteTable(s Session, tableName string) (interface{}, error) {
 	return res, err
 }
 
+// Open a pundun table.
 func OpenTable(s Session, tableName string) (interface{}, error) {
 	openTable := &apollo.OpenTable{
 		TableName: *proto.String(tableName),
@@ -184,6 +258,7 @@ func OpenTable(s Session, tableName string) (interface{}, error) {
 	return res, err
 }
 
+// Close a pundun table.
 func CloseTable(s Session, tableName string) (interface{}, error) {
 	closeTable := &apollo.CloseTable{
 		TableName: *proto.String(tableName),
@@ -201,6 +276,7 @@ func CloseTable(s Session, tableName string) (interface{}, error) {
 	return res, err
 }
 
+// Retrieve table information.
 func TableInfo(s Session, tableName string, attrs []string) (interface{}, error) {
 	attributes := fixAttributes(attrs)
 	tableInfo := &apollo.TableInfo{
@@ -220,6 +296,7 @@ func TableInfo(s Session, tableName string, attrs []string) (interface{}, error)
 	return res, err
 }
 
+// Read a key from pundun table.
 func Read(s Session, tableName string, key map[string]interface{}) (interface{}, error) {
 	keyFields := fixFields(key)
 	read := &apollo.Read{
@@ -239,6 +316,7 @@ func Read(s Session, tableName string, key map[string]interface{}) (interface{},
 	return res, err
 }
 
+// Write key and columns to a pundun table.
 func Write(s Session, tableName string, key, columns map[string]interface{}) (interface{}, error) {
 	keyFields := fixFields(key)
 	columnFields := fixFields(columns)
@@ -260,6 +338,7 @@ func Write(s Session, tableName string, key, columns map[string]interface{}) (in
 	return res, err
 }
 
+// Update a key's columns on a pundun table.
 func Update(s Session, tableName string, key map[string]interface{}, upOps []UpdateOperation) (interface{}, error) {
 	keyFields := fixFields(key)
 	updateOperations := fixUpdateOperations(upOps)
@@ -281,6 +360,7 @@ func Update(s Session, tableName string, key map[string]interface{}, upOps []Upd
 	return res, err
 }
 
+// Delete a key from pundun table.
 func Delete(s Session, tableName string, key map[string]interface{}) (interface{}, error) {
 	keyFields := fixFields(key)
 	delete := &apollo.Delete{
@@ -300,6 +380,8 @@ func Delete(s Session, tableName string, key map[string]interface{}) (interface{
 	return res, err
 }
 
+// Read a range of keys from pundun table.
+// Limit the amount of keys read by limit arg.
 func ReadRange(s Session, tableName string, skey, ekey map[string]interface{}, limit int) (interface{}, error) {
 	skeyFields := fixFields(skey)
 	ekeyFields := fixFields(ekey)
@@ -322,6 +404,7 @@ func ReadRange(s Session, tableName string, skey, ekey map[string]interface{}, l
 	return res, err
 }
 
+// Read a range of N number of Keys starting from a key.
 func ReadRangeN(s Session, tableName string, skey map[string]interface{}, n int) (interface{}, error) {
 	skeyFields := fixFields(skey)
 	readRangeN := &apollo.ReadRangeN{
@@ -342,6 +425,7 @@ func ReadRangeN(s Session, tableName string, skey map[string]interface{}, n int)
 	return res, err
 }
 
+// Read the first key on a pundun table and get an iterator.
 func First(s Session, tableName string) (interface{}, error) {
 	first := &apollo.First{
 		TableName: *proto.String(tableName),
@@ -359,6 +443,7 @@ func First(s Session, tableName string) (interface{}, error) {
 	return res, err
 }
 
+// Read the last key on a pundun table and get an iterator.
 func Last(s Session, tableName string) (interface{}, error) {
 	last := &apollo.Last{
 		TableName: *proto.String(tableName),
@@ -376,6 +461,7 @@ func Last(s Session, tableName string) (interface{}, error) {
 	return res, err
 }
 
+// Seek a key on pundun table ang get an iterator.
 func Seek(s Session, tableName string, key map[string]interface{}) (interface{}, error) {
 	keyFields := fixFields(key)
 	seek := &apollo.Seek{
@@ -395,6 +481,7 @@ func Seek(s Session, tableName string, key map[string]interface{}) (interface{},
 	return res, err
 }
 
+// Get the next key after the position of given iterator.
 func Next(s Session, it []byte) (interface{}, error) {
 	next := &apollo.Next{
 		It: it,
@@ -412,6 +499,7 @@ func Next(s Session, it []byte) (interface{}, error) {
 	return res, err
 }
 
+// Get the previous key before the position of given iterator.
 func Prev(s Session, it []byte) (interface{}, error) {
 	prev := &apollo.Prev{
 		It: it,
@@ -429,12 +517,13 @@ func Prev(s Session, it []byte) (interface{}, error) {
 	return res, err
 }
 
-func AddIndex(s Session, tableName string,
-	columns []string) (interface{}, error) {
+// Make the given column(s) indexed on pundun table.
+func AddIndex(s Session, tableName string, configList []IndexConfig) (interface{}, error) {
+	indexConfig := fixIndexConfigList(configList)
 
 	addIndex := &apollo.AddIndex{
 		TableName: *proto.String(tableName),
-		Columns:   columns,
+		Config:    indexConfig,
 	}
 
 	procedure := &apollo.ApolloPdu_AddIndex{
@@ -449,6 +538,8 @@ func AddIndex(s Session, tableName string,
 	return res, err
 }
 
+// Stop indexing column(s) on a pundun table and
+// remove previously indexed terms on those columns.
 func RemoveIndex(s Session, tableName string,
 	columns []string) (interface{}, error) {
 
@@ -469,15 +560,16 @@ func RemoveIndex(s Session, tableName string,
 	return res, err
 }
 
-func IndexRead(s Session, tableName string,
-	columnName string, term string) (interface{}, error) {
-
+// Get the keys by terms that are indexed on given pundun table and it's column.
+func IndexRead(s Session, tableName string, columnName string, term string, pf PostingFilter) (interface{}, error) {
+	var postingFilter *apollo.PostingFilter
+	postingFilter = fixPostingFilter(pf)
 	indexRead := &apollo.IndexRead{
 		TableName:  *proto.String(tableName),
 		ColumnName: *proto.String(columnName),
 		Term:       *proto.String(term),
+		Filter:     postingFilter,
 	}
-
 	procedure := &apollo.ApolloPdu_IndexRead{
 		IndexRead: indexRead,
 	}
@@ -566,6 +658,10 @@ func getResult(r *apollo.Response) interface{} {
 	if pl != nil {
 		return formatColumns(pl)
 	}
+	po := r.GetPostings()
+	if po != nil {
+		return formatPostings(po)
+	}
 	it := r.GetKcpIt()
 	if it != nil {
 		return formatKcpIt(it)
@@ -598,6 +694,24 @@ func getError(e *apollo.Error) map[string]string {
 func formatColumns(c *apollo.Fields) map[string]interface{} {
 	fields := c.GetFields()
 	return formatFields(fields)
+}
+
+func formatPostings(c *apollo.Postings) []Posting {
+	list := c.GetList()
+	postings := make([]Posting, len(list))
+	for i := range list {
+		postings[i] = formatPosting(list[i])
+	}
+	return postings
+}
+
+func formatPosting(p *apollo.Posting) Posting {
+	keyFields := p.GetKey()
+	keyMap := formatFields(keyFields)
+	timestamp := p.GetTimestamp()
+	frequency := p.GetFrequency()
+	position := p.GetPosition()
+	return Posting{keyMap, timestamp, frequency, position}
 }
 
 func formatKcp(kcp *apollo.KeyColumnsPair) KVP {
@@ -660,8 +774,10 @@ func fixOption(k string, v interface{}, opts []*apollo.TableOption) []*apollo.Ta
 
 	switch k {
 	case "type":
-		tableType := apollo.Type_LEVELDB
+		tableType := apollo.Type_ROCKSDB
 		switch v {
+		case Leveldb:
+			tableType = apollo.Type_LEVELDB
 		case MemLeveldb:
 			tableType = apollo.Type_MEMLEVELDB
 		case LeveldbWrapped:
@@ -958,4 +1074,101 @@ func encodeInt32(v *uint32) []byte {
 	} else {
 		return make([]byte, 0)
 	}
+}
+
+func fixIndexConfigList(configList []IndexConfig) []*apollo.IndexConfig {
+	indexConfig := make([]*apollo.IndexConfig, 0)
+	for c := range configList {
+		indexConfig = fixIndexConfig(configList[c], indexConfig)
+	}
+	return indexConfig
+}
+
+func fixIndexConfig(c IndexConfig, indexConfig []*apollo.IndexConfig) []*apollo.IndexConfig {
+	column := c.Column
+	options := fixIndexOptions(c.Options)
+	var config = &apollo.IndexConfig{
+		column,
+		options,
+	}
+	if config != nil {
+		len := len(indexConfig) + 1
+		newIndexConfig := make([]*apollo.IndexConfig, len)
+		copy(newIndexConfig, indexConfig[:])
+		newIndexConfig[len-1] = config
+		return newIndexConfig
+	} else {
+		return indexConfig
+	}
+}
+
+func fixPostingFilter(pf PostingFilter) *apollo.PostingFilter {
+	sortBy := apollo.SortBy_RELEVANCE
+	switch pf.SortBy {
+	case TIMESTAMP:
+		sortBy = apollo.SortBy_TIMESTAMP
+	default:
+	}
+	startTs := pf.StartTs
+	endTs := pf.EndTs
+	maxPostings := pf.MaxPostings
+	postingFilter := &apollo.PostingFilter{
+		sortBy,
+		startTs,
+		endTs,
+		maxPostings,
+	}
+	return postingFilter
+}
+
+func fixIndexOptions(opts IndexOptions) *apollo.IndexOptions {
+	charFilter := apollo.CharFilter_NFC
+	switch opts.CharFilter {
+	case NFD:
+		charFilter = apollo.CharFilter_NFD
+	case NFKC:
+		charFilter = apollo.CharFilter_NFKC
+	case NFKD:
+		charFilter = apollo.CharFilter_NFKD
+	default:
+	}
+
+	tokenizer := apollo.Tokenizer_UNICODE_WORD_BOUNDARIES
+
+	filter := opts.TokenFilter
+	transform := apollo.TokenTransform_LOWERCASE
+	switch filter.Transform {
+	case UPPERCASE:
+		transform = apollo.TokenTransform_UPPERCASE
+	case CASEFOLD:
+		transform = apollo.TokenTransform_CASEFOLD
+	default:
+	}
+	add := filter.Add
+	delete := filter.Delete
+
+	stats := apollo.TokenStats_NOSTATS
+	switch filter.Stats {
+	case UNIQUE:
+		stats = apollo.TokenStats_UNIQUE
+	case FREQUENCY:
+		stats = apollo.TokenStats_FREQUENCY
+	case POSITION:
+		stats = apollo.TokenStats_POSITION
+	default:
+	}
+
+	tokenFilter := &apollo.TokenFilter{
+		transform,
+		add,
+		delete,
+		stats,
+	}
+
+	indexOptions := &apollo.IndexOptions{
+		charFilter,
+		tokenizer,
+		tokenFilter,
+	}
+	return indexOptions
 }
