@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-/*
 func TestRun1(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	session, err := Connect("127.0.0.1:8887", "admin", "admin")
@@ -184,7 +183,7 @@ func TestRun2(t *testing.T) {
 	res, err = DeleteTable(session, tableName)
 	log.Printf("Delete Table Result: %v\n", res)
 }
-*/
+
 func TestRun3(t *testing.T) {
 	log.Println("Testing Rocksdb, ttl and indexing..")
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
@@ -196,7 +195,7 @@ func TestRun3(t *testing.T) {
 	}
 
 	tableName := "rocksdb_ttl_index_test"
-	keyDef := []string{"ts"}
+	keyDef := []string{"id"}
 	options := map[string]interface{}{
 		"type":               Rocksdb,
 		"ttl":                60,
@@ -212,90 +211,92 @@ func TestRun3(t *testing.T) {
 	res, err := CreateTable(session, tableName, keyDef, options)
 	log.Printf("Create Table result: %v\n", res)
 
-	ts := time.Now().UnixNano()
-	key := map[string]interface{}{
-		"ts": ts,
+	john_key := map[string]interface{}{
+		"id": "1",
 	}
-	columns := map[string]interface{}{
-		"name":    "John",
-		"counter": 1,
-		"bin":     []byte{0, 0, 0, 1},
-		"bool":    true,
-		"double":  5.5,
+	john_columns := map[string]interface{}{
+		"name": "John",
+		"text": "John the Apostle (Aramaic: ܝܘܚܢܢ ܫܠܝܚܐ‎‎ Yohanan Shliha; Hebrew: יוחנן בן זבדי‎‎ Yohanan ben Zavdi; Koine Greek: Ἰωάννης; Latin: Ioannes; c. AD 6-100) was one of the Twelve Apostles of Jesus according to the New Testament, which refers to him as Ἰωάννης. He was the son of Zebedee and Salome. His brother was James, who was another of the Twelve Apostles. Christian tradition holds that he outlived the remaining apostles and that he was the only one to die of natural causes: Judas Iscariot died by suicide, while the other ten all are considered to have died a martyr's death. This is because the Church Fathers considered him the same person as John the Evangelist, John of Patmos, John the Elder and the Beloved Disciple, although modern theologians and scholars have not formed a consensus on the relative identities of these men. The traditions of most Christian denominations have held that John the Apostle is the author of several books of the New Testament.",
 	}
-	var threshold uint32 = 2
-	var setvalue uint32 = 1
-	upOp := []UpdateOperation{
-		UpdateOperation{
-			Field:        "new_counter_1",
-			Instruction:  Increment,
-			Value:        1,
-			DefaultValue: 0,
-			Threshold:    &threshold,
-			SetValue:     &setvalue},
-		UpdateOperation{
-			Field:       "new_counter_2",
-			Instruction: Increment,
-			Value:       1,
-			Threshold:   &threshold,
-			SetValue:    &setvalue},
-		UpdateOperation{
-			Field:       "counter",
-			Instruction: Increment,
-			Value:       1},
+	kazuo_key := map[string]interface{}{
+		"id": "2",
+	}
+	kazuo_columns := map[string]interface{}{
+		"name": "Kazuo",
+		"text": "Kazuo Ishiguro OBE FRSA FRSL (石黒 一雄; born 8 November 1954) is a Nobel Prize winning British novelist, screenwriter and short story writer. He was born in Nagasaki, Japan; his family moved to England in 1960 when he was five. Ishiguro graduated from the University of Kent with a bachelor's degree in English and Philosophy in 1978 and gained his master's from the University of East Anglia's creative writing course in 1980.",
 	}
 
-	tokenFilter := TokenFilter{
+	tokenFilterName := TokenFilter{
 		Transform: LOWERCASE,
-		Add:       []string{},
+		Add:       []string{"john ian jon"},
 		Delete:    []string{},
 		Stats:     FREQUENCY}
 
-	indexOptions := IndexOptions{
+	tokenFilterText := TokenFilter{
+		Transform: CASEFOLD,
+		Add:       []string{""},
+		Delete:    []string{"$english_stopwords"},
+		Stats:     POSITION}
+
+	indexOptionsName := IndexOptions{
 		CharFilter:  NFC,
 		Tokenizer:   UNICODE_WORD_BOUNDARIES,
-		TokenFilter: tokenFilter,
+		TokenFilter: tokenFilterName,
+	}
+
+	indexOptionsText := IndexOptions{
+		CharFilter:  NFC,
+		Tokenizer:   UNICODE_WORD_BOUNDARIES,
+		TokenFilter: tokenFilterText,
 	}
 
 	indexConfigList := []IndexConfig{
 		IndexConfig{
 			Column:  "name",
-			Options: indexOptions,
-		}}
+			Options: indexOptionsName,
+		},
+		IndexConfig{
+			Column:  "text",
+			Options: indexOptionsText,
+		},
+	}
 
 	log.Println("Add Index")
 	res, err = AddIndex(session, tableName, indexConfigList)
 	log.Printf("Add Index: %v\n", res)
 
 	log.Println("Write")
-	res, err = Write(session, tableName, key, columns)
+	res, err = Write(session, tableName, john_key, john_columns)
+	res, err = Write(session, tableName, kazuo_key, kazuo_columns)
 	log.Printf("Write result: %v\n", res)
 
-	log.Println("Update")
-	res, err = Update(session, tableName, key, upOp)
-	log.Printf("Update result: %v\n", res)
-
 	log.Println("Read")
-	res, err = Read(session, tableName, key)
+	res, err = Read(session, tableName, john_key)
+	log.Printf("Read result: %v\n", res)
+	res, err = Read(session, tableName, kazuo_key)
 	log.Printf("Read result: %v\n", res)
 
 	log.Println("Index Read")
+
 	var postingFilter PostingFilter
 	res, err = IndexRead(session, tableName, "name", "john", postingFilter)
-	log.Printf("Index Read result: %v\n", res)
+	log.Printf("Index Read result [name:john]: %v\n", res)
+	res, err = IndexRead(session, tableName, "name", "ian", postingFilter)
+	log.Printf("Index Read result [name:ian]: %v\n", res)
 
-	sts := time.Now().UnixNano()
-	skey := map[string]interface{}{
-		"ts": sts,
-	}
+	res, err = IndexRead(session, tableName, "text", "nagasaki", postingFilter)
+	log.Printf("Index Read result [text:nagasaki]: %v\n", res)
 
-	log.Println("Read Range")
-	res, err = ReadRange(session, tableName, skey, key, 100)
-	log.Printf("Read Range result: %v\n", res)
+	res, err = IndexRead(session, tableName, "text", "the", postingFilter)
+	log.Printf("Index Read result [text:the]: %v\n", res)
 
-	log.Println("Read Range N")
-	res, err = ReadRangeN(session, tableName, skey, 2)
-	log.Printf("Read Range N result: %v\n", res)
+	phr1 := "Nobel Prize winning British novelist"
+	res, err = IndexRead(session, tableName, "text", phr1, postingFilter)
+	log.Printf("Index Read result [text:%v]: %v\n", phr1, res)
+
+	phr2 := "Nobel Prize winning Japanese novelist"
+	res, err = IndexRead(session, tableName, "text", phr2, postingFilter)
+	log.Printf("Index Read result [text:%v]: %v\n", phr2, res)
 
 	log.Printf("Delete Table: %v\n", tableName)
 	res, err = DeleteTable(session, tableName)
