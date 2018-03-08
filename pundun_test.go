@@ -50,12 +50,28 @@ func TestRun1(t *testing.T) {
 		"imsi": "123456789012345",
 		"ts":   ts,
 	}
+
+	var exampleList []interface{}
+	exampleList = append(exampleList, 1)
+	exampleList = append(exampleList, "some text")
+	exampleList = append(exampleList, 99.9)
+	exampleList = append(exampleList, false)
+	exampleList = append(exampleList, key)
+
+	exampleMap := map[string]interface{}{
+		"inner_list": exampleList,
+		"inner_map":  key,
+		"scalar":     63452,
+	}
+
 	columns := map[string]interface{}{
 		"name":    "John",
 		"counter": 1,
 		"bin":     []byte{0, 0, 0, 1},
 		"bool":    true,
 		"double":  5.5,
+		"list":    exampleList,
+		"map":     exampleMap,
 	}
 	var threshold uint32 = 2
 	var setvalue uint32 = 1
@@ -129,6 +145,7 @@ func TestRun1(t *testing.T) {
 	log.Println("Delete Table")
 	res, err = DeleteTable(session, tableName)
 	log.Printf("Delete Table result: %v\n", res)
+
 }
 
 func TestRun2(t *testing.T) {

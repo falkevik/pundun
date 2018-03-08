@@ -4,9 +4,11 @@ package pundun
 import (
 	"encoding/binary"
 	"errors"
+	//"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/pundunlabs/apollo"
 	"log"
+	//"reflect"
 )
 
 //Default timeout value for database procedures.
@@ -743,22 +745,42 @@ func formatFields(fields []*apollo.Field) map[string]interface{} {
 	m := make(map[string]interface{})
 	for i := range fields {
 		f := fields[i]
-		switch f.GetValue().(type) {
-		case *apollo.Field_String_:
-			m[f.Name] = f.GetString_()
-		case *apollo.Field_Binary:
-			m[f.Name] = f.GetBinary()
-		case *apollo.Field_Int:
-			m[f.Name] = int64(f.GetInt())
-		case *apollo.Field_Double:
-			m[f.Name] = f.GetDouble()
-		case *apollo.Field_Boolean:
-			m[f.Name] = f.GetBoolean()
-		case *apollo.Field_Null:
-			m[f.Name] = f.GetNull()
-		}
+		m[f.Name] = formatValue(f.Value)
 	}
 	return m
+}
+
+func formatValue(v *apollo.Value) interface{} {
+	var value interface{}
+	switch v.GetType().(type) {
+	case *apollo.Value_String_:
+		value = v.GetString_()
+	case *apollo.Value_Binary:
+		value = v.GetBinary()
+	case *apollo.Value_Int:
+		value = int64(v.GetInt())
+	case *apollo.Value_Double:
+		value = v.GetDouble()
+	case *apollo.Value_Boolean:
+		value = v.GetBoolean()
+	case *apollo.Value_Null:
+		value = v.GetNull()
+	case *apollo.Value_List:
+		list := v.GetList().Values
+		l := make([]interface{}, len(list))
+		for i, v := range list {
+			l[i] = formatValue(v)
+		}
+		value = l
+	case *apollo.Value_Map:
+		mmap := v.GetMap().Values
+		m := make(map[string]interface{})
+		for k, v := range mmap {
+			m[k] = formatValue(v)
+		}
+		value = m
+	}
+	return value
 }
 
 func fixOptions(options map[string]interface{}) []*apollo.TableOption {
@@ -932,58 +954,87 @@ func fixFields(m map[string]interface{}) []*apollo.Field {
 
 func fixField(k string, v interface{}, fields []*apollo.Field) []*apollo.Field {
 	var field *apollo.Field
-
-	switch v.(type) {
-	case string:
-		field = &apollo.Field{*proto.String(k),
-			&apollo.Field_String_{*proto.String(v.(string))},
-		}
-	case []byte:
-		field = &apollo.Field{*proto.String(k),
-			&apollo.Field_Binary{v.([]byte)},
-		}
-	case int:
-		field = &apollo.Field{*proto.String(k),
-			&apollo.Field_Int{*proto.Int64(int64(v.(int)))},
-		}
-	case int8:
-		field = &apollo.Field{*proto.String(k),
-			&apollo.Field_Int{*proto.Int64(int64(v.(int8)))},
-		}
-	case int16:
-		field = &apollo.Field{*proto.String(k),
-			&apollo.Field_Int{*proto.Int64(int64(v.(int16)))},
-		}
-	case int32:
-		field = &apollo.Field{*proto.String(k),
-			&apollo.Field_Int{*proto.Int64(int64(v.(int32)))},
-		}
-	case int64:
-		field = &apollo.Field{*proto.String(k),
-			&apollo.Field_Int{*proto.Int64(v.(int64))},
-		}
-	case float64:
-		field = &apollo.Field{*proto.String(k),
-			&apollo.Field_Double{*proto.Float64(v.(float64))},
-		}
-	case bool:
-		field = &apollo.Field{*proto.String(k),
-			&apollo.Field_Boolean{*proto.Bool(v.(bool))},
-		}
-	default:
-		if v == nil {
-			field = &apollo.Field{*proto.String(k),
-				&apollo.Field_Null{
-					[]byte{},
-				},
-			}
-		}
+	value := fixValue(v)
+	field = &apollo.Field{*proto.String(k),
+		value,
 	}
 	len := len(fields) + 1
 	newFields := make([]*apollo.Field, len)
 	copy(newFields, fields[:])
 	newFields[len-1] = field
 	return newFields
+}
+
+func fixValue(v interface{}) *apollo.Value {
+	var value *apollo.Value
+	switch v.(type) {
+	case string:
+		value = &apollo.Value{
+			&apollo.Value_String_{*proto.String(v.(string))},
+		}
+	case []byte:
+		value = &apollo.Value{
+			&apollo.Value_Binary{v.([]byte)},
+		}
+	case int:
+		value = &apollo.Value{
+			&apollo.Value_Int{*proto.Int64(int64(v.(int)))},
+		}
+	case int8:
+		value = &apollo.Value{
+			&apollo.Value_Int{*proto.Int64(int64(v.(int8)))},
+		}
+	case int16:
+		value = &apollo.Value{
+			&apollo.Value_Int{*proto.Int64(int64(v.(int16)))},
+		}
+	case int32:
+		value = &apollo.Value{
+			&apollo.Value_Int{*proto.Int64(int64(v.(int32)))},
+		}
+	case int64:
+		value = &apollo.Value{
+			&apollo.Value_Int{*proto.Int64(v.(int64))},
+		}
+	case float64:
+		value = &apollo.Value{
+			&apollo.Value_Double{*proto.Float64(v.(float64))},
+		}
+	case bool:
+		value = &apollo.Value{
+			&apollo.Value_Boolean{*proto.Bool(v.(bool))},
+		}
+	case []interface{}:
+		values := make([]*apollo.Value, len(v.([]interface{})))
+		for i, e := range v.([]interface{}) {
+			values[i] = fixValue(e)
+		}
+		value = &apollo.Value{
+			&apollo.Value_List{
+				&apollo.ListValue{values},
+			},
+		}
+	case map[string]interface{}:
+		values := make(map[string]*apollo.Value)
+		for k, e := range v.(map[string]interface{}) {
+			values[k] = fixValue(e)
+		}
+		value = &apollo.Value{
+			&apollo.Value_Map{
+				&apollo.MapValue{values},
+			},
+		}
+	default:
+		//fmt.Println("default: ", reflect.TypeOf(v))
+		if v == nil {
+			value = &apollo.Value{
+				&apollo.Value_Null{
+					[]byte{},
+				},
+			}
+		}
+	}
+	return value
 }
 
 func fixUpdateOperations(upOps []UpdateOperation) []*apollo.UpdateOperation {
@@ -1025,37 +1076,6 @@ func fixUpdateOperation(upOp UpdateOperation, updateOperations []*apollo.UpdateO
 	copy(newUpdateOperations, updateOperations[:])
 	newUpdateOperations[len-1] = updateOperation
 	return newUpdateOperations
-}
-
-func fixValue(v interface{}) *apollo.Value {
-	var value *apollo.Value
-	switch v.(type) {
-	case string:
-		value = &apollo.Value{&apollo.Value_String_{*proto.String(v.(string))}}
-	case []byte:
-		value = &apollo.Value{&apollo.Value_Binary{v.([]byte)}}
-	case int:
-		value = &apollo.Value{&apollo.Value_Int{*proto.Int64(int64(v.(int)))}}
-	case int8:
-		value = &apollo.Value{&apollo.Value_Int{*proto.Int64(int64(v.(int8)))}}
-	case int16:
-		value = &apollo.Value{&apollo.Value_Int{*proto.Int64(int64(v.(int16)))}}
-	case int32:
-		value = &apollo.Value{&apollo.Value_Int{*proto.Int64(int64(v.(int32)))}}
-	case int64:
-		value = &apollo.Value{&apollo.Value_Int{*proto.Int64(v.(int64))}}
-	case float64:
-		value = &apollo.Value{&apollo.Value_Double{*proto.Float64(v.(float64))}}
-	case bool:
-		value = &apollo.Value{&apollo.Value_Boolean{*proto.Bool(v.(bool))}}
-	default:
-		if v == nil {
-			value = &apollo.Value{&apollo.Value_Null{
-				[]byte{}},
-			}
-		}
-	}
-	return value
 }
 
 func fixDefaultValue(v interface{}) *apollo.Value {
@@ -1109,8 +1129,11 @@ func fixPostingFilter(pf PostingFilter) *apollo.PostingFilter {
 		sortBy = apollo.SortBy_TIMESTAMP
 	default:
 	}
-	startTs := pf.StartTs
-	endTs := pf.EndTs
+
+	startTs := make([]byte, 4)
+	binary.BigEndian.PutUint32(startTs, pf.StartTs)
+	endTs := make([]byte, 4)
+	binary.BigEndian.PutUint32(endTs, pf.EndTs)
 	maxPostings := pf.MaxPostings
 	postingFilter := &apollo.PostingFilter{
 		sortBy,
