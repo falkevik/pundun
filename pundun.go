@@ -812,7 +812,7 @@ func fixOption(k string, v interface{}, opts []*apollo.TableOption) []*apollo.Ta
 			tableType = apollo.Type_MEMLEVELDBTDA
 		default:
 		}
-		opt = &apollo.TableOption{&apollo.TableOption_Type{tableType}}
+		opt = &apollo.TableOption{Opt: &apollo.TableOption_Type{tableType}}
 	case "data_model":
 		dataModel := apollo.DataModel_ARRAY
 		switch v {
@@ -822,13 +822,13 @@ func fixOption(k string, v interface{}, opts []*apollo.TableOption) []*apollo.Ta
 			dataModel = apollo.DataModel_MAP
 		default:
 		}
-		opt = &apollo.TableOption{&apollo.TableOption_DataModel{dataModel}}
+		opt = &apollo.TableOption{Opt: &apollo.TableOption_DataModel{dataModel}}
 	case "wrapper":
 		wrapper := fixWrapper(v.(Wrapper))
-		opt = &apollo.TableOption{&apollo.TableOption_Wrapper{wrapper}}
+		opt = &apollo.TableOption{Opt: &apollo.TableOption_Wrapper{wrapper}}
 	case "tda":
 		tda := fixTda(v.(Tda))
-		opt = &apollo.TableOption{&apollo.TableOption_Tda{tda}}
+		opt = &apollo.TableOption{Opt: &apollo.TableOption_Tda{tda}}
 	case "hashing_method":
 		hm := apollo.HashingMethod_UNIFORM
 		switch v {
@@ -842,7 +842,7 @@ func fixOption(k string, v interface{}, opts []*apollo.TableOption) []*apollo.Ta
 			hm = apollo.HashingMethod_RENDEZVOUS
 		default:
 		}
-		opt = &apollo.TableOption{&apollo.TableOption_HashingMethod{hm}}
+		opt = &apollo.TableOption{Opt: &apollo.TableOption_HashingMethod{hm}}
 	default:
 	}
 	if opt != nil {
@@ -955,9 +955,8 @@ func fixFields(m map[string]interface{}) []*apollo.Field {
 func fixField(k string, v interface{}, fields []*apollo.Field) []*apollo.Field {
 	var field *apollo.Field
 	value := fixValue(v)
-	field = &apollo.Field{*proto.String(k),
-		value,
-	}
+	field = &apollo.Field{Name: *proto.String(k),
+			      Value: value}
 	len := len(fields) + 1
 	newFields := make([]*apollo.Field, len)
 	copy(newFields, fields[:])
@@ -970,39 +969,39 @@ func fixValue(v interface{}) *apollo.Value {
 	switch v.(type) {
 	case string:
 		value = &apollo.Value{
-			&apollo.Value_String_{*proto.String(v.(string))},
+			    Type: &apollo.Value_String_{*proto.String(v.(string))},
 		}
 	case []byte:
 		value = &apollo.Value{
-			&apollo.Value_Binary{v.([]byte)},
+			Type: &apollo.Value_Binary{v.([]byte)},
 		}
 	case int:
 		value = &apollo.Value{
-			&apollo.Value_Int{*proto.Int64(int64(v.(int)))},
+			Type: &apollo.Value_Int{*proto.Int64(int64(v.(int)))},
 		}
 	case int8:
 		value = &apollo.Value{
-			&apollo.Value_Int{*proto.Int64(int64(v.(int8)))},
+			Type: &apollo.Value_Int{*proto.Int64(int64(v.(int8)))},
 		}
 	case int16:
 		value = &apollo.Value{
-			&apollo.Value_Int{*proto.Int64(int64(v.(int16)))},
+			Type: &apollo.Value_Int{*proto.Int64(int64(v.(int16)))},
 		}
 	case int32:
 		value = &apollo.Value{
-			&apollo.Value_Int{*proto.Int64(int64(v.(int32)))},
+			Type: &apollo.Value_Int{*proto.Int64(int64(v.(int32)))},
 		}
 	case int64:
 		value = &apollo.Value{
-			&apollo.Value_Int{*proto.Int64(v.(int64))},
+			Type: &apollo.Value_Int{*proto.Int64(v.(int64))},
 		}
 	case float64:
 		value = &apollo.Value{
-			&apollo.Value_Double{*proto.Float64(v.(float64))},
+			Type: &apollo.Value_Double{*proto.Float64(v.(float64))},
 		}
 	case bool:
 		value = &apollo.Value{
-			&apollo.Value_Boolean{*proto.Bool(v.(bool))},
+			Type: &apollo.Value_Boolean{*proto.Bool(v.(bool))},
 		}
 	case []interface{}:
 		values := make([]*apollo.Value, len(v.([]interface{})))
@@ -1010,8 +1009,8 @@ func fixValue(v interface{}) *apollo.Value {
 			values[i] = fixValue(e)
 		}
 		value = &apollo.Value{
-			&apollo.Value_List{
-				&apollo.ListValue{values},
+			    Type: &apollo.Value_List{
+				&apollo.ListValue{Values: values},
 			},
 		}
 	case map[string]interface{}:
@@ -1020,15 +1019,15 @@ func fixValue(v interface{}) *apollo.Value {
 			values[k] = fixValue(e)
 		}
 		value = &apollo.Value{
-			&apollo.Value_Map{
-				&apollo.MapValue{values},
+			Type: &apollo.Value_Map{
+				&apollo.MapValue{Values: values},
 			},
 		}
 	default:
 		//fmt.Println("default: ", reflect.TypeOf(v))
 		if v == nil {
 			value = &apollo.Value{
-				&apollo.Value_Null{
+				Type: &apollo.Value_Null{
 					[]byte{},
 				},
 			}
@@ -1057,19 +1056,19 @@ func fixUpdateOperation(upOp UpdateOperation, updateOperations []*apollo.UpdateO
 	threshold := encodeInt32(upOp.Threshold)
 	setvalue := encodeInt32(upOp.SetValue)
 	updateInstruction = &apollo.UpdateInstruction{
-		instruction,
-		threshold,
-		setvalue}
+		Instruction: instruction,
+		Threshold: threshold,
+		SetValue: setvalue}
 
 	value := fixValue(upOp.Value)
 	defaultValue := fixDefaultValue(upOp.DefaultValue)
 
 	var updateOperation *apollo.UpdateOperation
 	updateOperation = &apollo.UpdateOperation{
-		*proto.String(upOp.Field),
-		updateInstruction,
-		value,
-		defaultValue}
+		Field: *proto.String(upOp.Field),
+		UpdateInstruction: updateInstruction,
+		Value: value,
+		DefaultValue: defaultValue}
 
 	len := len(updateOperations) + 1
 	newUpdateOperations := make([]*apollo.UpdateOperation, len)
@@ -1108,8 +1107,8 @@ func fixIndexConfig(c IndexConfig, indexConfig []*apollo.IndexConfig) []*apollo.
 	column := c.Column
 	options := fixIndexOptions(c.Options)
 	var config = &apollo.IndexConfig{
-		column,
-		options,
+		Column: column,
+		Options: options,
 	}
 	if config != nil {
 		len := len(indexConfig) + 1
@@ -1136,10 +1135,10 @@ func fixPostingFilter(pf PostingFilter) *apollo.PostingFilter {
 	binary.BigEndian.PutUint32(endTs, pf.EndTs)
 	maxPostings := pf.MaxPostings
 	postingFilter := &apollo.PostingFilter{
-		sortBy,
-		startTs,
-		endTs,
-		maxPostings,
+		SortBy: sortBy,
+		StartTs: startTs,
+		EndTs: endTs,
+		MaxPostings: maxPostings,
 	}
 	return postingFilter
 }
@@ -1182,16 +1181,16 @@ func fixIndexOptions(opts IndexOptions) *apollo.IndexOptions {
 	}
 
 	tokenFilter := &apollo.TokenFilter{
-		transform,
-		add,
-		delete,
-		stats,
+		Transform: transform,
+		Add: add,
+		Delete: delete,
+		Stats: stats,
 	}
 
 	indexOptions := &apollo.IndexOptions{
-		charFilter,
-		tokenizer,
-		tokenFilter,
+		CharFilter: charFilter,
+		Tokenizer: tokenizer,
+		TokenFilter: tokenFilter,
 	}
 	return indexOptions
 }
