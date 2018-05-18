@@ -584,6 +584,21 @@ func IndexRead(s Session, tableName string, columnName string, term string, pf P
 	return res, err
 }
 
+// List the existing tables on Pundun
+func ListTables(s Session) (interface{}, error) {
+	listTables := &apollo.ListTables{}
+	procedure := &apollo.ApolloPdu_ListTables{
+		ListTables: listTables,
+	}
+
+	pdu := &apollo.ApolloPdu{
+		Procedure: procedure,
+	}
+
+	res, err := run_transaction(s, pdu)
+	return res, err
+}
+
 func run_transaction(s Session, pdu *apollo.ApolloPdu) (interface{}, error) {
 	tid := GetTid(s)
 	pdu = make_pdu(pdu, tid)
@@ -667,6 +682,10 @@ func getResult(r *apollo.Response) interface{} {
 	it := r.GetKcpIt()
 	if it != nil {
 		return formatKcpIt(it)
+	}
+	strList := r.GetStringList()
+	if strList != nil {
+		return formatStringList(strList)
 	} else {
 		return nil
 	}
@@ -728,6 +747,10 @@ func formatKcpIt(kcpIt *apollo.KcpIt) Iterator {
 	kvp := kcpIt.GetKeyColumnsPair()
 	it := kcpIt.It
 	return Iterator{formatKcp(kvp), it}
+}
+
+func formatStringList(strList *apollo.FieldNames) []string {
+	return strList.FieldNames
 }
 
 func formatKcl(kcl *apollo.KeyColumnsList) KVL {
@@ -1129,10 +1152,8 @@ func fixPostingFilter(pf PostingFilter) *apollo.PostingFilter {
 	default:
 	}
 
-	startTs := make([]byte, 4)
-	binary.BigEndian.PutUint32(startTs, pf.StartTs)
-	endTs := make([]byte, 4)
-	binary.BigEndian.PutUint32(endTs, pf.EndTs)
+	startTs := setTs(pf.StartTs)
+	endTs := setTs(pf.EndTs)
 	maxPostings := pf.MaxPostings
 	postingFilter := &apollo.PostingFilter{
 		SortBy: sortBy,
@@ -1193,4 +1214,15 @@ func fixIndexOptions(opts IndexOptions) *apollo.IndexOptions {
 		TokenFilter: tokenFilter,
 	}
 	return indexOptions
+}
+
+func setTs(ts uint32) []byte {
+	if ts > 0 {
+		binTs := make([]byte, 4)
+		binary.BigEndian.PutUint32(binTs, ts)
+		return binTs
+	} else {
+		binTs := make([]byte, 0)
+		return binTs
+	}
 }

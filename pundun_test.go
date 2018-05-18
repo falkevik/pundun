@@ -28,8 +28,17 @@ func TestRun1(t *testing.T) {
 		"hash_exclude":       []string{"ts"},
 	}
 
+	log.Println("List Tables")
+	res, err := ListTables(session)
+	log.Printf("Result: %v\n", res)
+
+	if stringInSlice(tableName, res.([]string)) == true {
+		log.Println("Delete Table")
+		res, err = DeleteTable(session, tableName)
+		log.Printf("Delete Table result: %v\n", res)
+	}
 	log.Println("Create Table")
-	res, err := CreateTable(session, tableName, keyDef, options)
+	res, err = CreateTable(session, tableName, keyDef, options)
 	log.Printf("Result: %v\n", res)
 
 	log.Println("Table Info")
@@ -145,7 +154,6 @@ func TestRun1(t *testing.T) {
 	log.Println("Delete Table")
 	res, err = DeleteTable(session, tableName)
 	log.Printf("Delete Table result: %v\n", res)
-
 }
 
 func TestRun2(t *testing.T) {
@@ -294,8 +302,7 @@ func TestRun3(t *testing.T) {
 	log.Printf("Read result: %v\n", res)
 
 	log.Println("Index Read")
-
-	var postingFilter PostingFilter
+	var postingFilter = PostingFilter{}
 	res, err = IndexRead(session, tableName, "name", "john", postingFilter)
 	log.Printf("Index Read result [name:john]: %v\n", res)
 	res, err = IndexRead(session, tableName, "name", "ian", postingFilter)
@@ -356,4 +363,13 @@ func writeRead(s Session, tableName string, reduce chan bool) {
 	default:
 		reduce <- false
 	}
+}
+
+func stringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	return false
 }
