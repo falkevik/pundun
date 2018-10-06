@@ -4,11 +4,48 @@ import (
 	"log"
 	"testing"
 	"time"
+	"reflect"
 )
+
+func testconnect() (Session, error) {
+	return Connect("192.168.211.142:8887", "admin", "admin")
+}
+
+func TestRun0(t *testing.T) {
+	session, _ := testconnect()
+	defer Disconnect(session)
+	tableName := "ct"
+
+	log.Printf("First in %v", tableName)
+	res, err := First(session, tableName)
+	if err != nil {
+	    log.Printf("error: %v", err)
+	}
+	log.Printf("First key: %v\n", res.Kvp.Key)
+	log.Printf("First columns: %v\n", res.Kvp.Columns)
+	log.Printf("First it: %v\n", res.It)
+
+	log.Printf("Next in %v", tableName)
+	res, err = Next(session, res.It)
+	if err != nil {
+	    log.Printf("error: %v", err)
+	}
+	log.Printf("Next key: %v\n", res.Kvp.Key)
+	log.Printf("Next columns: %v\n", res.Kvp.Columns)
+	log.Printf("Next it: %v\n", res.It)
+
+	log.Printf("Last in %v", tableName)
+	res, err = Last(session, tableName)
+	if err != nil {
+	    log.Printf("error: %v", err)
+	}
+	log.Printf("Last key: %v\n", res.Kvp.Key)
+	log.Printf("Last columns: %v\n", res.Kvp.Columns)
+}
 
 func TestRun1(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	session, err := Connect("127.0.0.1:8887", "admin", "admin")
+	session, err := testconnect()
 	if err != nil {
 		log.Println(err)
 		return
@@ -18,31 +55,33 @@ func TestRun1(t *testing.T) {
 	tableName := "ct"
 	keyDef := []string{"imsi", "ts"}
 	options := map[string]interface{}{
-		"type":               Rocksdb,
+		"type":               "rocksdb",
 		"data_model":         "array",
-		"comparator":         "descending",
+		"comparator":	      "descending",
 		"time_series":        false,
 		"num_of_shards":      8,
-		"distributed":        true,
+		"distributed":        false,
 		"replication_factor": 1,
 		"hash_exclude":       []string{"ts"},
 	}
 
 	log.Println("List Tables")
-	res, err := ListTables(session)
-	log.Printf("Result: %v\n", res)
+	lt_res, err := ListTables(session)
+	log.Printf("Type of res: %v\n", reflect.TypeOf(lt_res))
+	log.Printf("Result: %v\n", lt_res)
 
-	if stringInSlice(tableName, res.([]string)) == true {
+	if stringInSlice(tableName, lt_res) == true {
 		log.Println("Delete Table")
-		res, err = DeleteTable(session, tableName)
-		log.Printf("Delete Table result: %v\n", res)
+		del_res, _ := DeleteTable(session, tableName)
+		log.Printf("Delete Table result: %v\n", del_res)
 	}
-	log.Println("Create Table")
-	res, err = CreateTable(session, tableName, keyDef, options)
+	log.Printf("Create Table %v\n", tableName)
+	res, err := CreateTable(session, tableName, keyDef, options)
 	log.Printf("Result: %v\n", res)
 
 	log.Println("Table Info")
-	res, err = TableInfo(session, tableName, []string{"type", "key"})
+	res, err = TableInfo(session, tableName, []string{"comparator", "type", "key", "distributed"})
+	log.Printf("Type of res: %v\n", reflect.TypeOf(res))
 	log.Printf("Result: %v\n", res)
 
 	log.Println("Close Table")
@@ -54,9 +93,15 @@ func TestRun1(t *testing.T) {
 	log.Printf("Result: %v\n", res)
 
 	time_ := time.Now()
-	ts, _ := time_.MarshalBinary()
+	ts := time_.Unix() * 1000
+	log.Printf("time_ %v", time_)
+	log.Printf("ts %v", ts)
 	key := map[string]interface{}{
 		"imsi": "123456789012345",
+		"ts":   ts,
+	}
+	key2 := map[string]interface{}{
+		"imsi": "023456789012345",
 		"ts":   ts,
 	}
 
@@ -107,15 +152,21 @@ func TestRun1(t *testing.T) {
 	log.Println("Write")
 	res, err = Write(session, tableName, key, columns)
 	log.Printf("Write result: %v\n", res)
-
-	log.Println("Update")
-	res, err = Update(session, tableName, key, upOp)
-	log.Printf("Update result: %v\n", res)
-
-	log.Println("Read")
-	res, err = Read(session, tableName, key)
-	log.Printf("Read result: %v\n", res)
-
+	{
+	    log.Println("Update")
+	    res, _:= Update(session, tableName, key, upOp)
+	    log.Printf("Type of res: %v\n", reflect.TypeOf(res))
+	    log.Printf("Update result: %v\n", res)
+	    for colname,colvalue := range res {
+		log.Printf("colname %v, colvalue %v", colname, colvalue)
+	    }
+	}
+	{
+	    log.Println("Read")
+	    res, _ := Read(session, tableName, key)
+	    log.Printf("Type of res: %v\n", reflect.TypeOf(res))
+	    log.Printf("Read result: %v\n", res)
+	}
 	stime_ := time.Now()
 	sts, _ := stime_.MarshalBinary()
 	skey := map[string]interface{}{
@@ -124,25 +175,35 @@ func TestRun1(t *testing.T) {
 	}
 
 	log.Println("Read Range")
-	res, err = ReadRange(session, tableName, skey, key, 100)
-	log.Printf("Read Range result: %v\n", res)
+	rr_res, _ := ReadRange(session, tableName, skey, key, 100)
+	for _, e := range rr_res.List {
+	    log.Printf("%v -> %v", e.Key, e.Columns)
+	}
 
 	log.Println("Read Range N")
-	res, err = ReadRangeN(session, tableName, skey, 2)
-	log.Printf("Read Range N result: %v\n", res)
+	read_range, _ := ReadRangeN(session, tableName, skey, 2)
+	log.Printf("Type of res: %v\n", reflect.TypeOf(read_range))
+	log.Printf("Read Range N result: %v\n", read_range)
 
 	log.Println("First")
-	res, err = First(session, tableName)
-	log.Printf("First result: %v\n", res)
+	firstres, _ := First(session, tableName)
+	log.Printf("First result: %v\n", firstres)
 
 	log.Println("Last")
-	res, err = Last(session, tableName)
-	log.Printf("Last result: %v\n", res)
-
-	log.Println("Seek")
-	res, err = Seek(session, tableName, key)
-	log.Printf("Seek result: %v\n", res)
-
+	lastres, _ := Last(session, tableName)
+	log.Printf("Last result: %v\n", lastres)
+	{
+		log.Println("Seek")
+		seekres, _ := Seek(session, tableName, key)
+		log.Printf("Type of res: %v\n", reflect.TypeOf(seekres))
+		log.Printf("Seek result: %v\n", seekres)
+	}
+	{
+		log.Println("Seek2")
+		seekres2, _ := Seek(session, tableName, key2)
+		log.Printf("Type of res: %v\n", reflect.TypeOf(seekres2))
+		log.Printf("Seek result: %v\n", seekres2)
+	}
 	log.Println("Delete")
 	res, err = Delete(session, tableName, key)
 	log.Printf("Delete result: %v\n", res)
@@ -159,7 +220,7 @@ func TestRun1(t *testing.T) {
 func TestRun2(t *testing.T) {
 	log.Println("Testing Concurrent Operations..")
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	session, err := Connect("127.0.0.1:8887", "admin", "admin")
+	session, err := testconnect()
 	defer Disconnect(session)
 	if err != nil {
 		log.Println(err)
@@ -183,7 +244,7 @@ func TestRun2(t *testing.T) {
 	res, err := CreateTable(session, tableName, keyDef, options)
 	log.Printf("Create Table result: %v\n", res)
 
-	max := 65535
+	max := 5
 	log.Printf("Start %v concurrent read/write routines\n", max)
 	reduce := make(chan bool, 1024)
 	defer close(reduce)
@@ -212,7 +273,7 @@ func TestRun2(t *testing.T) {
 func TestRun3(t *testing.T) {
 	log.Println("Testing Rocksdb, ttl and indexing..")
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	session, err := Connect("127.0.0.1:8887", "admin", "admin")
+	session, err := testconnect()
 	defer Disconnect(session)
 	if err != nil {
 		log.Println(err)
@@ -222,7 +283,7 @@ func TestRun3(t *testing.T) {
 	tableName := "rocksdb_ttl_index_test"
 	keyDef := []string{"id"}
 	options := map[string]interface{}{
-		"type":               Rocksdb,
+		"type":		      "rocksdb",
 		"ttl":                60,
 		"data_model":         "array",
 		"comparator":         "descending",
@@ -278,7 +339,7 @@ func TestRun3(t *testing.T) {
 	indexConfigList := []IndexConfig{
 		IndexConfig{
 			Column:  "name",
-			Options: indexOptionsName,
+                        Options: indexOptionsName,
 		},
 		IndexConfig{
 			Column:  "text",
@@ -343,25 +404,18 @@ func writeRead(s Session, tableName string, reduce chan bool) {
 		return
 	}
 
-	res, err := Read(s, tableName, key)
+	cols, err := Read(s, tableName, key)
 	if err != nil {
 		reduce <- false
 		return
 	}
-
-	switch res.(type) {
-	case map[string]interface{}:
-		cols := res.(map[string]interface{})
-		resTs := cols["timestamp"].(int64)
-		if resTs == ts {
+	resTs := cols["timestamp"].(int64)
+	if resTs == ts {
 			reduce <- true
 			return
-		} else {
+	} else {
 			reduce <- false
 			return
-		}
-	default:
-		reduce <- false
 	}
 }
 

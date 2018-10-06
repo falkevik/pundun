@@ -299,7 +299,7 @@ func TableInfo(s Session, tableName string, attrs []string) (interface{}, error)
 }
 
 // Read a key from pundun table.
-func Read(s Session, tableName string, key map[string]interface{}) (interface{}, error) {
+func Read(s Session, tableName string, key map[string]interface{}) (map[string]interface{}, error) {
 	keyFields := fixFields(key)
 	read := &apollo.Read{
 		TableName: *proto.String(tableName),
@@ -315,7 +315,10 @@ func Read(s Session, tableName string, key map[string]interface{}) (interface{},
 	}
 
 	res, err := run_transaction(s, pdu)
-	return res, err
+	if err != nil {
+	    return map[string]interface{}{}, err
+	}
+	return res.(map[string]interface{}), nil
 }
 
 // Write key and columns to a pundun table.
@@ -341,7 +344,7 @@ func Write(s Session, tableName string, key, columns map[string]interface{}) (in
 }
 
 // Update a key's columns on a pundun table.
-func Update(s Session, tableName string, key map[string]interface{}, upOps []UpdateOperation) (interface{}, error) {
+func Update(s Session, tableName string, key map[string]interface{}, upOps []UpdateOperation) (map[string]interface{}, error) {
 	keyFields := fixFields(key)
 	updateOperations := fixUpdateOperations(upOps)
 	update := &apollo.Update{
@@ -359,7 +362,10 @@ func Update(s Session, tableName string, key map[string]interface{}, upOps []Upd
 	}
 
 	res, err := run_transaction(s, pdu)
-	return res, err
+	if err != nil {
+	    return map[string]interface{}{}, err
+	}
+	return res.(map[string]interface{}), nil
 }
 
 // Delete a key from pundun table.
@@ -384,7 +390,7 @@ func Delete(s Session, tableName string, key map[string]interface{}) (interface{
 
 // Read a range of keys from pundun table.
 // Limit the amount of keys read by limit arg.
-func ReadRange(s Session, tableName string, skey, ekey map[string]interface{}, limit int) (interface{}, error) {
+func ReadRange(s Session, tableName string, skey, ekey map[string]interface{}, limit int) (KVL, error) {
 	skeyFields := fixFields(skey)
 	ekeyFields := fixFields(ekey)
 	readRange := &apollo.ReadRange{
@@ -403,11 +409,14 @@ func ReadRange(s Session, tableName string, skey, ekey map[string]interface{}, l
 	}
 
 	res, err := run_transaction(s, pdu)
-	return res, err
+	if err != nil {
+	    return KVL{}, err
+	}
+	return res.(KVL), nil
 }
 
 // Read a range of N number of Keys starting from a key.
-func ReadRangeN(s Session, tableName string, skey map[string]interface{}, n int) (interface{}, error) {
+func ReadRangeN(s Session, tableName string, skey map[string]interface{}, n int) (KVL, error) {
 	skeyFields := fixFields(skey)
 	readRangeN := &apollo.ReadRangeN{
 		TableName: *proto.String(tableName),
@@ -424,11 +433,14 @@ func ReadRangeN(s Session, tableName string, skey map[string]interface{}, n int)
 	}
 
 	res, err := run_transaction(s, pdu)
-	return res, err
+	if err != nil {
+	    return KVL{}, err
+	}
+	return res.(KVL), nil
 }
 
 // Read the first key on a pundun table and get an iterator.
-func First(s Session, tableName string) (interface{}, error) {
+func First(s Session, tableName string) (Iterator, error) {
 	first := &apollo.First{
 		TableName: *proto.String(tableName),
 	}
@@ -442,11 +454,15 @@ func First(s Session, tableName string) (interface{}, error) {
 	}
 
 	res, err := run_transaction(s, pdu)
-	return res, err
+	if err != nil {
+	    return Iterator{}, err
+	}
+	it := res.(Iterator)
+	return it, nil
 }
 
 // Read the last key on a pundun table and get an iterator.
-func Last(s Session, tableName string) (interface{}, error) {
+func Last(s Session, tableName string) (Iterator, error) {
 	last := &apollo.Last{
 		TableName: *proto.String(tableName),
 	}
@@ -460,11 +476,15 @@ func Last(s Session, tableName string) (interface{}, error) {
 	}
 
 	res, err := run_transaction(s, pdu)
-	return res, err
+	if err != nil {
+	    return Iterator{}, err
+	}
+	it := res.(Iterator)
+	return it, nil
 }
 
 // Seek a key on pundun table ang get an iterator.
-func Seek(s Session, tableName string, key map[string]interface{}) (interface{}, error) {
+func Seek(s Session, tableName string, key map[string]interface{}) (Iterator, error) {
 	keyFields := fixFields(key)
 	seek := &apollo.Seek{
 		TableName: *proto.String(tableName),
@@ -480,11 +500,15 @@ func Seek(s Session, tableName string, key map[string]interface{}) (interface{},
 	}
 
 	res, err := run_transaction(s, pdu)
-	return res, err
+	if err != nil {
+	    return Iterator{}, err
+	}
+	it := res.(Iterator)
+	return it, nil
 }
 
 // Get the next key after the position of given iterator.
-func Next(s Session, it []byte) (interface{}, error) {
+func Next(s Session, it []byte) (Iterator, error) {
 	next := &apollo.Next{
 		It: it,
 	}
@@ -498,7 +522,11 @@ func Next(s Session, it []byte) (interface{}, error) {
 	}
 
 	res, err := run_transaction(s, pdu)
-	return res, err
+	if err != nil {
+	    return Iterator{}, err
+	}
+	nit := res.(Iterator)
+	return nit, nil
 }
 
 // Get the previous key before the position of given iterator.
@@ -585,7 +613,7 @@ func IndexRead(s Session, tableName string, columnName string, term string, pf P
 }
 
 // List the existing tables on Pundun
-func ListTables(s Session) (interface{}, error) {
+func ListTables(s Session) ([]string, error) {
 	listTables := &apollo.ListTables{}
 	procedure := &apollo.ApolloPdu_ListTables{
 		ListTables: listTables,
@@ -596,7 +624,10 @@ func ListTables(s Session) (interface{}, error) {
 	}
 
 	res, err := run_transaction(s, pdu)
-	return res, err
+	if err != nil {
+	    return []string{}, err
+	}
+	return res.([]string), nil
 }
 
 func run_transaction(s Session, pdu *apollo.ApolloPdu) (interface{}, error) {
@@ -643,14 +674,15 @@ func waitForResponse(recv []byte) (interface{}, error) {
 
 	e := recvPdu.GetError()
 	r := recvPdu.GetResponse()
-	if r != nil {
-		result := getResult(r)
-		return result, err
-	}
 	if e != nil {
 		pErr := getError(e)
-		return pErr, err
+		return nil, pErr
 	}
+	if r != nil {
+		result := getResult(r)
+		return result, nil
+	}
+
 	return nil, errors.New("invalid response")
 }
 
@@ -691,25 +723,35 @@ func getResult(r *apollo.Response) interface{} {
 	}
 }
 
-func getError(e *apollo.Error) map[string]string {
-	m := make(map[string]string)
+func appendstring(a string, b string) string {
+	if a == "" {
+		return b
+	}
+	return a + " " + b
+}
+func getError(e *apollo.Error) error {
+	var m string
 	t := e.GetTransport()
 	if t != "" {
-		m["transport"] = t
+		m = appendstring(m, "transport: " + t)
 	}
 	p := e.GetProtocol()
 	if p != "" {
-		m["protocol"] = p
+		m = appendstring(m, "protocol: " + p)
 	}
 	s := e.GetSystem()
 	if s != "" {
-		m["system"] = s
+		m = appendstring(m, "system: " + s)
 	}
 	o := e.GetMisc()
 	if o != "" {
-		m["misc"] = o
+		m = appendstring(m, "misc: " + o)
 	}
-	return m
+
+	if m != "" {
+		return errors.New(m)
+	}
+	return nil
 }
 
 func formatColumns(c *apollo.Fields) map[string]interface{} {
@@ -866,6 +908,34 @@ func fixOption(k string, v interface{}, opts []*apollo.TableOption) []*apollo.Ta
 		default:
 		}
 		opt = &apollo.TableOption{Opt: &apollo.TableOption_HashingMethod{hm}}
+	case "comparator" :
+		comp := apollo.Comparator_DESCENDING
+		switch v {
+		case "ascending" :
+		    comp = apollo.Comparator_ASCENDING
+		default:
+		}
+		    opt = &apollo.TableOption{Opt:
+				&apollo.TableOption_Comparator{comp}}
+	case "distributed" :
+		dist := true
+		switch v {
+		case false :
+			dist = false
+		default :
+		}
+		opt = &apollo.TableOption{Opt:
+				&apollo.TableOption_Distributed{dist}}
+	case "num_of_shards" :
+		switch v := v.(type) {
+		case int:
+		    opt = &apollo.TableOption{Opt:
+				&apollo.TableOption_NumOfShards{uint32(v)}}
+		case uint32:
+		    opt = &apollo.TableOption{Opt:
+				&apollo.TableOption_NumOfShards{v}}
+		default :
+		}
 	default:
 	}
 	if opt != nil {

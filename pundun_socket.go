@@ -70,8 +70,8 @@ func Connect(host string, user string, pass string) (Session, error) {
 	}
 
 	scramc := struct { scram.ScramConn } {}
-	scramc.Send = func(data []byte) (int, error) { return HSend(conn, data)}
-	scramc.Read = func() ([]byte, error) { return HRead(conn)}
+	scramc.Send = func(data []byte) (int, error) { return HSend(conn, data) }
+	scramc.Read = func() ([]byte, error) { return HRead(conn) }
 
 	authErr := scram.Authenticate(scramc, user, pass)
 	if authErr != nil {
