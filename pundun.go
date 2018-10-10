@@ -508,7 +508,7 @@ func Seek(s Session, tableName string, key map[string]interface{}) (Iterator, er
 }
 
 // Get the next key after the position of given iterator.
-func Next(s Session, it []byte) (Iterator, error) {
+func Next(s Session, it []byte) (KVP, error) {
 	next := &apollo.Next{
 		It: it,
 	}
@@ -523,10 +523,10 @@ func Next(s Session, it []byte) (Iterator, error) {
 
 	res, err := run_transaction(s, pdu)
 	if err != nil {
-	    return Iterator{}, err
+	    return KVP{}, err
 	}
-	nit := res.(Iterator)
-	return nit, nil
+	kvp := res.(KVP)
+	return kvp, nil
 }
 
 // Get the previous key before the position of given iterator.
