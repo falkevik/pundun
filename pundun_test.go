@@ -26,13 +26,12 @@ func TestRun0(t *testing.T) {
 	log.Printf("First it: %v\n", res.It)
 
 	log.Printf("Next in %v", tableName)
-	res, err = Next(session, res.It)
+	nres, err := Next(session, res.It)
 	if err != nil {
 	    log.Printf("error: %v", err)
 	}
-	log.Printf("Next key: %v\n", res.Kvp.Key)
-	log.Printf("Next columns: %v\n", res.Kvp.Columns)
-	log.Printf("Next it: %v\n", res.It)
+	log.Printf("Next key: %v\n", nres.Key)
+	log.Printf("Next columns: %v\n", nres.Columns)
 
 	log.Printf("Last in %v", tableName)
 	res, err = Last(session, tableName)
