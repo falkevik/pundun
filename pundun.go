@@ -439,6 +439,30 @@ func ReadRangeN(s Session, tableName string, skey map[string]interface{}, n int)
 	return res.(KVL), nil
 }
 
+// Read a range of N number of Keys starting from a key for Time Series table.
+func ReadRangeNTs(s Session, tableName string, skey map[string]interface{}, n int) (KVL, error) {
+	skeyFields := fixFields(skey)
+	readRangeNTs := &apollo.ReadRangeNTs{
+		TableName: *proto.String(tableName),
+		StartKey:  skeyFields,
+		N:         *proto.Uint32(uint32(n)),
+	}
+
+	procedure := &apollo.ApolloPdu_ReadRangeNTs{
+		ReadRangeNTs: readRangeNTs,
+	}
+
+	pdu := &apollo.ApolloPdu{
+		Procedure: procedure,
+	}
+
+	res, err := run_transaction(s, pdu)
+	if err != nil {
+	    return KVL{}, err
+	}
+	return res.(KVL), nil
+}
+
 // Read the first key on a pundun table and get an iterator.
 func First(s Session, tableName string) (Iterator, error) {
 	first := &apollo.First{
